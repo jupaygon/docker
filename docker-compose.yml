@@ -1,0 +1,112 @@
+version: '3'
+
+services:
+  nginx:
+    image: jpg_nginx
+    container_name: jpg_nginx
+    hostname: jpg_nginx
+    build:
+      context: './images'
+      dockerfile: 'nginx/Dockerfile'
+    ports:
+      - "81:80"
+    volumes:
+      - ./images/nginx/conf.d:/etc/nginx/conf.d
+      - ../jpg-domain:/var/www/html/jpg-domain
+    depends_on:
+      - php
+
+  php:
+    image: jpg_php
+    container_name: jpg_php
+    hostname: jpg_php
+    build:
+      context: './images'
+      dockerfile: 'php/Dockerfile'
+    volumes:
+      - ../jpg-domain:/var/www/html/jpg-domain
+    depends_on:
+      - mariadb
+      - memcached
+      - rabbitmq
+      - redis
+
+  mariadb:
+    image: jpg_mariadb
+    container_name: jpg_mariadb
+    hostname: jpg_mariadb
+    build:
+      context: './images'
+      dockerfile: 'mariadb/Dockerfile'
+    volumes:
+      - ./images/mariadb/dumps/:/docker-entrypoint-initdb.d/
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_USER: dev
+      MYSQL_PASSWORD: password
+    ports:
+      - "3307:3306"
+
+  memcached:
+    image: jpg_memcached
+    container_name: jpg_memcached
+    hostname: jpg_memcached
+    build:
+      context: './images'
+      dockerfile: 'memcached/Dockerfile'
+    ports:
+      - "11211:11211"
+
+  memcachedadmin:
+    image: jpg_memcachedadmin
+    container_name: jpg_memcachedadmin
+    hostname: jpg_memcachedadmin
+    build:
+      context: './images'
+      dockerfile: 'memcachedadmin/Dockerfile'
+    restart: always
+    ports:
+      - "9001:9001"
+
+  rabbitmq:
+    image: jpg_rabbitmq
+    container_name: jpg_rabbitmq
+    hostname: jpg_rabbitmq
+    build:
+      context: './images'
+      dockerfile: 'rabbitmq/Dockerfile'
+    ports:
+      - "5672:5672"  # AMQP connection port
+      - "15672:15672" # Admin port
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - ./images/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+      - ./images/rabbitmq/rabbitmq_delayed_message_exchange-3.12.0.ez:/opt/rabbitmq/plugins/rabbitmq_delayed_message_exchange-0.0.1.ez
+
+  redis:
+    image: jpg_redis
+    container_name: jpg_redis
+    hostname: jpg_redis
+    build:
+      context: './images'
+      dockerfile: 'redis/Dockerfile'
+    ports:
+      - "6379:6379"
+
+  phpmyadmin:
+    image: jpg_phpmyadmin
+    container_name: jpg_phpmyadmin
+    hostname: jpg_phpmyadmin
+    build:
+      context: './images'
+      dockerfile: 'phpmyadmin/Dockerfile'
+    environment:
+      PMA_HOST: jpg_mariadb
+      PMA_USER: root
+      PMA_PASSWORD: password
+    ports:
+      - "8080:80"
+    depends_on:
+      - mariadb
