@@ -1,4 +1,4 @@
-# 🐳 Jupaygon Private Docker
+# 🐳 Jupaygon Docker
 
 Basic Docker configuration for web projects.
 
