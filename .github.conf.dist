@@ -1,9 +1,10 @@
-# GitHub Agent Authentication (Junior)
-GITHUB_AGENT_USER="your_github_agent_username_here"
+# GitHub Agent Authentication
+GITHUB_AGENT_USER="your_github_agent_user_account_here"
 GITHUB_AGENT_TOKEN="your_github_agent_token_here"
 
 # Git Author for Agent Commits (overrides local config per-command)
-export GIT_AUTHOR_NAME="Jarvis"
-export GIT_AUTHOR_EMAIL="jarvis-aidev@users.noreply.github.com"
-export GIT_COMMITTER_NAME="Jarvis"
-export GIT_COMMITTER_EMAIL="jarvis-aidev@users.noreply.github.com"
+export GIT_AUTHOR_NAME="your_github_agent_name_here"
+export GIT_AUTHOR_EMAIL="your_github_agent_user_account_here@users.noreply.github.com"
+export GIT_COMMITTER_NAME="your_github_agent_name_here"
+export GIT_COMMITTER_EMAIL="your_github_agent_user_account_here@users.noreply.github.com"
+

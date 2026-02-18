@@ -1,4 +1,5 @@
 .env
 /.github.conf
 /.jira.conf
+/.jira.conf
 images/mysql/dumps/*.sql
