@@ -1,0 +1,7 @@
+# Jira API credentials
+# Copy this file to .jira.conf and fill in your values
+# NEVER commit .jira.conf
+
+export JIRA_BASE_URL="https://your-instance.atlassian.net"
+export JIRA_EMAIL="your-email@company.com"
+export JIRA_API_TOKEN="your_api_token"

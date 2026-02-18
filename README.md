@@ -1,127 +1,189 @@
-# 🐳 Jupaygon Docker
+# Workspace Docker Environment v2.0.0
 
-Basic Docker configuration for web projects.
+Unified Docker development environment that automatically serves any project in the workspace — no per-project configuration needed.
 
-### 🛠 Services
+## Changelog (from jupaygon/docker)
 
-- [Nginx](https://www.nginx.com/) as web server.
-- [PHP-FPM](https://www.php.net/manual/en/install.fpm.php) as PHP FastCGI implementation.
-- [MariaDB](https://mariadb.org/) as database engine.
-- [phpMyAdmin](https://www.phpmyadmin.net/) as database administration tool.
-- [RabbitMQ](https://www.rabbitmq.com/) as Message Queue Engine.
-    - Includes the [Delayed Message Exchange Plugin](https://github.com/rabbitmq/rabbitmq-delayed-message-exchange).
-- [Redis](https://redis.io/) for shared in-memory data store.
-- [Memcached](https://memcached.org/) as distributed memory caching system.
-- [Memcachedadmin](https://elijaa.org/phpmemcachedadmin-installation-guide.html) as Memcached administration tool.
+- **v2.0.0** — Unified workspace: wildcard nginx, single volume mount, `dj_` prefix, dnsmasq setup, agent docs.
 
-### 📋 Pre requirements
+## Services
 
-- [docker](https://docs.docker.com/engine/install/)
-- [docker-compose](https://docs.docker.com/compose/install/)
+| Service    | Container      | Port          |
+|------------|----------------|---------------|
+| Nginx      | dj_nginx       | 81 → 80      |
+| PHP 8.4    | dj_php         | (internal)    |
+| MySQL 8.0  | dj_mysql       | 3307 → 3306  |
+| Redis      | dj_redis       | 6379          |
+| Memcached  | dj_memcached   | 11211         |
+| RabbitMQ   | dj_rabbitmq    | 5672 / 15672  |
+| phpMyAdmin | dj_phpmyadmin  | 8080 → 80    |
 
-Docker documentation: [https://docs.docker.com/manuals/](https://docs.docker.com/manuals/)
+## Requirements
 
-### 🔧 Install
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Homebrew](https://brew.sh) (for dnsmasq on macOS)
 
-Clone the repository in your projects' folder:
+## Installation
 
-```
+```bash
+# 1. Clone this repo inside your workspace
+cd ~/Workspace
 git clone git@github.com:jupaygon/docker.git
+
+# 2. Configure DNS (one-time setup)
+./docker/scripts/setup-dnsmasq.sh
+
+# 3. Copy and configure agent credentials (optional)
+cp docker/.github.conf.dist docker/.github.conf
+# Edit .github.conf with your agent token
+
+# 4. Start services
+cd docker
+docker compose up -d --build
 ```
 
-If you want to make your own repository starting from this one, follow the next steps:
+## How It Works
 
-- Make your new repository in GitHub, we will asume that the name of your new repo is "docker" but you can change it.
-- Clone original one to your new repo with the following commands:
+### Wildcard Nginx + dnsmasq
 
-```
-git clone --bare git@github.com:jupaygon/docker.git
-cd docker.git
-git push --mirror git@github.com:your_github_username/docker.git
-cd ..
-rm -rf docker.git
-```
+1. **dnsmasq** resolves all `*.test` domains to `127.0.0.1`
+2. **Nginx** uses a regex server block that captures the first subdomain segment as the folder name:
+   ```
+   server_name ~^(?<folder>[^.]+)\.;
+   root /var/www/html/$folder/public;
+   ```
+3. The entire workspace is mounted as a single volume: `${WORKSPACE_PATH:-..}:/var/www/html`
 
-- Now you new repository "docker" is a exact copy of "jupaygon/docker". You can download it executing the following command in your projects' folder:
-
-```
-git clone git@github.com:your_github_username/docker.git
-```
-
-### ⚙️ Setup
-
-- Create a Nginx configuration file for each domain, in the **images/nginx/conf.d/** folder. See the provided example in **jpg-domain.conf** file.
-- Add a volume for each project in nginx and php services of the **docker-compose.yml** file. See the provided example in **volumes** section of both services.
-- Add your projects' folders (one by project) in the same level than **docker** folder.
-- You have to add the domains to local file /etc/hosts.
-- You can change the prefix "jpg_" of the containers in the **docker-compose.yml** file, as well as the bash aliases in the **.bashrc** (or similar file). The use of the prefix is recommended to avoid conflicts with other containers.
-- In the same way, feel free to change the ports of the services in the **docker-compose.yml** file.
-    - Port 81 is configured for Nginx (default is 80).
-    - Port 3307 is configured for MariaDB (default is 3306).
-    - Change others service ports if you have some conflict with others containers declared in others docker-compose.yml.
-
-### 🛟 Database backup 🚨
-
-Ensure to save updated backups of your databases as **.sql** files  in the **images/mariadb/dumps/** folder, before to stop the container.
-
-The backups file will be imported automatically when the container starts, and you will lost the changes if you don't do it.
-
-If you do not want this behavior, please comment the line **- ./images/mariadb/dumps:/docker-entrypoint-initdb.d** in the **docker-compose.yml** file.
-
-### 🐳 Main docker commands
-
-Add the following lines to your **.bashrc** (or similar like .zshrc) file:
+### URL Format
 
 ```
-#### Bash alias and functions ####
-# Login into php container (repeat for each container if you need it)
-alias jpg-docker-php="docker exec -ti jpg_php bash"
-# See docker containers
-alias jpg-docker-ps="docker ps | grep jpg_"
-# See docker images
-alias jpg-docker-images="docker images | grep jpg_"
-# Set up the containers
-alias jpg-docker-up="docker-compose up -d"
-# Set up the containers and build the images
-alias jpg-docker-build="docker-compose up --build -d"
-# Stop the containers
-alias jpg-docker-down="docker-compose down"
-# Delete all containers
-jpg-docker-rm() {
-  docker rm $(docker ps -a | grep 'jpg_' | awk '{print $1}')
+http://<folder>.<project>.test:81
+```
+
+- `my-project.my-project.test:81` → `/var/www/html/my-project/public`
+- `wt-my-project-zn-123-slug.my-project.test:81` → `/var/www/html/wt-my-project-zn-123-slug/public`
+
+The second segment (`<project>`) is used for DNS routing but **only the first segment** (`<folder>`) determines which folder is served.
+
+## Adding a Project
+
+Just clone it into the workspace. That's it.
+
+```bash
+cd ~/Workspace
+git clone git@github.com:org/my-project.git
+```
+
+Then access it at: `http://my-project.my-project.test:81`
+
+## Shell Aliases (.zshrc)
+
+```bash
+# Workspace Docker aliases
+export DJ_HOME="$HOME/Workspace"
+
+# Login into containers
+alias dj-docker-php="docker exec -ti dj_php bash"
+alias dj-docker-mysql="docker exec -ti dj_mysql bash"
+alias dj-docker-nginx="docker exec -ti dj_nginx bash"
+alias dj-docker-redis="docker exec -ti dj_redis redis-cli"
+
+# See docker containers and images
+alias dj-docker-ps="docker ps | grep dj_"
+alias dj-docker-images="docker images | grep dj_"
+
+# Docker compose shortcut (e.g. dj-docker logs dj_php)
+alias dj-docker="docker compose -f $DJ_HOME/docker/docker-compose.yml"
+
+# Start / build / stop
+alias dj-docker-up="$DJ_HOME/docker/scripts/docker-up.sh"
+alias dj-docker-build="dj-docker up --build -d"
+alias dj-docker-down="$DJ_HOME/docker/scripts/docker-down.sh"
+
+# Quick access to services UI
+alias dj-docker-rabbit="open http://localhost:15672"
+alias dj-docker-pma="open http://localhost:8080"
+
+# Remove all dj_ containers
+dj-docker-rm() {
+  docker rm $(docker ps -a | grep 'dj_' | awk '{print $1}')
 }
-# Delete all images
-jpg-docker-rmi() {
-  docker rmi $(docker images -a | grep 'jpg_' | awk '{print $3}')
+# Remove all dj_ images
+dj-docker-rmi() {
+  docker rmi $(docker images -a | grep 'dj_' | awk '{print $3}')
 }
 ```
 
-Execute the following command to reload the **.bashrc** file:
+Add to your `.zshrc` (or `.bashrc`) and reload:
 
-``` 
-source ~/.bashrc
+```bash
+source ~/.zshrc
 ```
 
-Use of commands:
+**Commands reference:**
 
-| Command                               | Description                                |
-|---------------------------------------|--------------------------------------------|
-| jpg-docker-php                        | Login into php container                   |
-| docker exec -ti {container_name} bash | Login into expecified container            |
-| jpg-docker-ps                         | See docker containers                      |
-| jpg-docker-images                     | See docker images                          |
-| jpg-docker-up                         | Set up the containers                      |
-| jpg-docker-build                      | Set up the containers and build the images |
-| jpg-docker-down                       | Stop the containers                        |
-| jpg-docker-rm                         | Delete all containers                      |
-| jpg-docker-rmi                        | Delete all images                          |
+| Command            | Description                                |
+|--------------------|--------------------------------------------|
+| `dj-docker-php`    | Login into PHP container                   |
+| `dj-docker-mysql`  | Login into MySQL container                 |
+| `dj-docker-nginx`  | Login into Nginx container                 |
+| `dj-docker-redis`  | Login into Redis CLI                       |
+| `dj-docker-ps`     | List running dj_ containers               |
+| `dj-docker-images` | List dj_ images                            |
+| `dj-docker`        | Docker compose shortcut (e.g. `dj-docker logs`) |
+| `dj-docker-up`     | Start containers                           |
+| `dj-docker-build`  | Build and start containers                 |
+| `dj-docker-down`   | Stop containers                            |
+| `dj-docker-rm`     | Remove all dj_ containers                  |
+| `dj-docker-rmi`    | Remove all dj_ images                      |
+| `dj-docker-rabbit` | Open RabbitMQ UI                           |
+| `dj-docker-pma`    | Open phpMyAdmin                            |
 
-### 📡 Access to services
+## Ports & Services
 
+| Port  | Service                      |
+|-------|------------------------------|
+| 81    | Nginx (HTTP)                 |
+| 3307  | MySQL                        |
+| 5672  | RabbitMQ (AMQP)              |
+| 15672 | RabbitMQ (Management UI)     |
+| 6379  | Redis                        |
+| 11211 | Memcached                    |
+| 8080  | phpMyAdmin                   |
 
-| Service           | Url                               |
-|-------------------|-----------------------------------|
-| 🌐 Nginx          | [http://jpg-domain.local:81](http://jpg-domain.local:81) |
-| 🐇 RabbitMQ       | [http://localhost:15672](http://localhost:15672)     |
-| 🐘 phpMyAdmin     | [http://localhost:9080](http://localhost:9080)      |
-| 🧠 Memcachedadmin | [http://localhost:9001/](http://localhost:9001/)     |
+## Troubleshooting
+
+### DNS not resolving *.test
+
+```bash
+# Verify dnsmasq is running
+brew services list | grep dnsmasq
+
+# Test resolution
+dig test-project.test @127.0.0.1
+
+# Re-run setup if needed
+./scripts/setup-dnsmasq.sh
+```
+
+### Site returns 404 or "directory index of ... is forbidden"
+
+- Ensure the project has a `public/` directory with an `index.php`
+- Check the folder name matches the first subdomain segment exactly
+
+### MySQL connection from PHP
+
+```
+Host: dj_mysql
+Port: 3306
+User: root / dev
+Password: password
+```
+
+### Container names conflict
+
+If you have other Docker environments using the same ports, stop them first:
+
+```bash
+docker compose -f ~/path/to/other/docker-compose.yml down
+```

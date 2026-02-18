@@ -1,10 +1,8 @@
-version: '3'
-
 services:
   nginx:
-    image: jpg_nginx
-    container_name: jpg_nginx
-    hostname: jpg_nginx
+    image: dj_nginx
+    container_name: dj_nginx
+    hostname: dj_nginx
     build:
       context: './images'
       dockerfile: 'nginx/Dockerfile'
@@ -12,71 +10,70 @@ services:
       - "81:80"
     volumes:
       - ./images/nginx/conf.d:/etc/nginx/conf.d
-      - ../jpg-domain:/var/www/html/jpg-domain
+      - ${WORKSPACE_PATH:-..}:/var/www/html
     depends_on:
       - php
 
   php:
-    image: jpg_php
-    container_name: jpg_php
-    hostname: jpg_php
+    image: dj_php
+    container_name: dj_php
+    hostname: dj_php
     build:
       context: './images'
       dockerfile: 'php/Dockerfile'
+    environment:
+      - GITHUB_TOKEN
     volumes:
-      - ../jpg-domain:/var/www/html/jpg-domain
+      - ~/.ssh:/root/.ssh:ro
+      - ${WORKSPACE_PATH:-..}:/var/www/html
     depends_on:
-      - mariadb
+      - mysql
       - memcached
       - rabbitmq
       - redis
 
-  mariadb:
-    image: jpg_mariadb
-    container_name: jpg_mariadb
-    hostname: jpg_mariadb
+  mysql:
+    image: dj_mysql
     build:
       context: './images'
-      dockerfile: 'mariadb/Dockerfile'
-    volumes:
-      - ./images/mariadb/dumps/:/docker-entrypoint-initdb.d/
+      dockerfile: 'mysql/Dockerfile'
+    container_name: dj_mysql
     environment:
       MYSQL_ROOT_PASSWORD: password
+      MYSQL_ROOT_HOST: "%"
       MYSQL_USER: dev
       MYSQL_PASSWORD: password
     ports:
       - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./images/mysql/conf.d/:/etc/mysql/conf.d/
+      - ./images/mysql/dumps/:/docker-entrypoint-initdb.d/
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ppassword" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   memcached:
-    image: jpg_memcached
-    container_name: jpg_memcached
-    hostname: jpg_memcached
+    image: dj_memcached
+    container_name: dj_memcached
+    hostname: dj_memcached
     build:
       context: './images'
       dockerfile: 'memcached/Dockerfile'
     ports:
       - "11211:11211"
 
-  memcachedadmin:
-    image: jpg_memcachedadmin
-    container_name: jpg_memcachedadmin
-    hostname: jpg_memcachedadmin
-    build:
-      context: './images'
-      dockerfile: 'memcachedadmin/Dockerfile'
-    restart: always
-    ports:
-      - "9001:9001"
-
   rabbitmq:
-    image: jpg_rabbitmq
-    container_name: jpg_rabbitmq
-    hostname: jpg_rabbitmq
+    image: dj_rabbitmq
+    container_name: dj_rabbitmq
+    hostname: dj_rabbitmq
     build:
       context: './images'
       dockerfile: 'rabbitmq/Dockerfile'
     ports:
-      - "5672:5672"  # AMQP connection port
+      - "5672:5672"   # AMQP connection port
       - "15672:15672" # Admin port
     environment:
       - RABBITMQ_DEFAULT_USER=guest
@@ -86,9 +83,9 @@ services:
       - ./images/rabbitmq/rabbitmq_delayed_message_exchange-3.12.0.ez:/opt/rabbitmq/plugins/rabbitmq_delayed_message_exchange-0.0.1.ez
 
   redis:
-    image: jpg_redis
-    container_name: jpg_redis
-    hostname: jpg_redis
+    image: dj_redis
+    container_name: dj_redis
+    hostname: dj_redis
     build:
       context: './images'
       dockerfile: 'redis/Dockerfile'
@@ -96,17 +93,20 @@ services:
       - "6379:6379"
 
   phpmyadmin:
-    image: jpg_phpmyadmin
-    container_name: jpg_phpmyadmin
-    hostname: jpg_phpmyadmin
+    image: dj_phpmyadmin
+    container_name: dj_phpmyadmin
+    hostname: dj_phpmyadmin
     build:
       context: './images'
       dockerfile: 'phpmyadmin/Dockerfile'
     environment:
-      PMA_HOST: jpg_mariadb
+      PMA_HOST: dj_mysql
       PMA_USER: root
       PMA_PASSWORD: password
     ports:
       - "8080:80"
     depends_on:
-      - mariadb
+      - mysql
+
+volumes:
+  mysql_data: {}
