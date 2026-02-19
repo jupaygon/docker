@@ -127,12 +127,12 @@ Host paths (e.g. `/Users/dev/...`) do not exist inside the container, so symlink
 **Correct way** — run from inside Docker using relative paths:
 
 ```bash
-docker exec -w /var/www/html/<worktree-folder> dj_php ln -s ../my-project/.github.conf .github.conf
-docker exec -w /var/www/html/<worktree-folder> dj_php ln -s ../my-project/.env.local .env.local
-docker exec -w /var/www/html/<worktree-folder> dj_php ln -s ../my-project/.jira.conf .jira.conf
+docker exec -w /var/www/html/<worktree-folder> zn_php ln -s ../zeronet-dashboard/.github.conf .github.conf
+docker exec -w /var/www/html/<worktree-folder> zn_php ln -s ../zeronet-dashboard/.env.local .env.local
+docker exec -w /var/www/html/<worktree-folder> zn_php ln -s ../zeronet-dashboard/.jira.conf .jira.conf
 ```
 
-Replace `my-project` with the actual main repository folder name (the parent `<repo>` folder).
+Replace `zeronet-dashboard` with the actual main repository folder name (the parent `<repo>` folder).
 
 **Wrong way** — do NOT do this:
 
@@ -148,6 +148,26 @@ ln -s "$REPO_ROOT/.env.local" .env.local
 - NEVER commit these files
 - NEVER cat, print, or display the contents of `.github.conf` or `.jira.conf`
 - `.github.conf.dist`, `.jira.conf.dist` and `.env` are templates only
+
+### Installing dependencies (Composer)
+
+After creating symlinks, **always run `composer install`** inside Docker. **NEVER copy the `vendor/` directory** from the main repository — copied vendor causes autoloader path mismatches, broken class resolution, and subtle cache problems.
+
+The `.github.conf` file must be sourced **inside the Docker container**, not from the host machine. Passing the token from the host via `docker exec -e` corrupts the value due to shell escaping and quoting issues.
+
+**Correct way** — source `.github.conf` inside Docker:
+
+```bash
+docker exec -w /var/www/html/<worktree-folder> <php-container> bash -c 'source .github.conf && COMPOSER_AUTH="{\"github-oauth\":{\"github.com\":\"$GITHUB_AGENT_TOKEN\"}}" composer install --no-interaction'
+```
+
+**Wrong way** — do NOT do this:
+
+```bash
+# ❌ Host-side source + -e flag corrupts the token (quoting/escaping issues)
+source .github.conf
+docker exec -w /var/www/html/<folder> -e COMPOSER_AUTH="{\"github-oauth\":{\"github.com\":\"$GITHUB_AGENT_TOKEN\"}}" <php-container> composer install --no-interaction
+```
 
 ---
 
