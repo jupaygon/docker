@@ -1,29 +1,39 @@
 #!/bin/bash
 
 # =============================================================================
-# Configuration
+# Configuration (loaded from .env)
 # =============================================================================
 
-# Databases: name and remote dump path (parallel arrays, same index)
-DB_NAMES=(
-  "zeronet"
-  "zeronet_web"
-)
-
-DB_PATHS=(
-  "/var/www/zeronet-dashboard/shared/var/db_backups/original"
-  "/var/www/zeronet_web/shared/var/db_backups/original"
-)
-
-# Servers (SSH hosts, configured in ~/.ssh/config)
-SERVERS=(
-  "zn.prod1"
-  "zn.staging1"
-)
-
-# Local paths
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_FILE="$PROJECT_DIR/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "ERROR: .env file not found at $ENV_FILE"
+  echo "Copy .env.dist to .env and configure DB_SYNC_DATABASES and DB_SYNC_SERVERS"
+  exit 1
+fi
+
+source "$ENV_FILE"
+
+if [ -z "$DB_SYNC_DATABASES" ] || [ -z "$DB_SYNC_SERVERS" ]; then
+  echo "ERROR: DB_SYNC_DATABASES and DB_SYNC_SERVERS must be set in .env"
+  exit 1
+fi
+
+# Parse "name:path,name:path" into parallel arrays
+DB_NAMES=()
+DB_PATHS=()
+IFS=',' read -ra DB_ENTRIES <<< "$DB_SYNC_DATABASES"
+for entry in "${DB_ENTRIES[@]}"; do
+  DB_NAMES+=("${entry%%:*}")
+  DB_PATHS+=("${entry#*:}")
+done
+
+# Parse "host,host" into array
+IFS=',' read -ra SERVERS <<< "$DB_SYNC_SERVERS"
+
+# Local paths
 DUMPS_DIR="$PROJECT_DIR/images/mysql/dumps"
 
 # Docker
