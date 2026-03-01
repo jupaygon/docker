@@ -3,3 +3,4 @@
 /.jira.conf
 /.jira.conf
 images/mysql/dumps/*.sql
+.claude/
