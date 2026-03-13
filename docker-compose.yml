@@ -31,6 +31,7 @@ services:
       - memcached
       - rabbitmq
       - redis
+      - postgres
 
   mysql:
     image: dj_mysql
@@ -92,6 +93,27 @@ services:
     ports:
       - "6379:6379"
 
+  postgres:
+    image: dj_postgres
+    container_name: dj_postgres
+    hostname: dj_postgres
+    build:
+      context: './images'
+      dockerfile: 'postgres/Dockerfile'
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "app", "-U", "app"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   phpmyadmin:
     image: dj_phpmyadmin
     container_name: dj_phpmyadmin
@@ -110,3 +132,4 @@ services:
 
 volumes:
   mysql_data: {}
+  postgres_data: {}
