@@ -19,8 +19,8 @@ Clone any project into your workspace folder and it's instantly accessible via `
 
 ## Requirements
 
-- [Docker Desktop](https://docker.com/products/docker-desktop/)
-- [Homebrew](https://brew.sh) (for dnsmasq on macOS)
+- [Docker Desktop](https://docker.com/products/docker-desktop/) (or Docker Engine on Linux)
+- DNS wildcard resolution for `*.test` (see [DNS Setup](#dns-setup) below)
 
 ## Quick Start
 
@@ -29,14 +29,55 @@ Clone any project into your workspace folder and it's instantly accessible via `
 cd ~/Workspace
 git clone https://github.com/jupaygon/docker.git
 
-# 2. Configure DNS (one-time macOS setup)
-./docker/scripts/setup-dnsmasq.sh
+# 2. Configure DNS (one-time, see DNS Setup section)
+./docker/scripts/setup-dnsmasq.sh   # macOS
 
 # 3. Start services
 cd docker
 cp .env.dist .env
 docker compose up -d --build
 ```
+
+## DNS Setup
+
+All `*.test` domains must resolve to `127.0.0.1`. Choose your platform:
+
+### macOS (Homebrew + dnsmasq)
+
+```bash
+./scripts/setup-dnsmasq.sh
+```
+
+This installs dnsmasq via Homebrew, adds `address=/test/127.0.0.1`, and creates `/etc/resolver/test`.
+
+### Linux (dnsmasq)
+
+```bash
+# Install dnsmasq
+sudo apt install dnsmasq        # Debian/Ubuntu
+sudo dnf install dnsmasq        # Fedora/RHEL
+
+# Configure wildcard
+echo "address=/test/127.0.0.1" | sudo tee /etc/dnsmasq.d/test.conf
+
+# If systemd-resolved is running (Ubuntu 18+), configure it to delegate .test:
+sudo mkdir -p /etc/systemd/resolved.conf.d
+echo -e "[Resolve]\nDNS=127.0.0.1\nDomains=~test" | sudo tee /etc/systemd/resolved.conf.d/test.conf
+sudo systemctl restart systemd-resolved
+
+# Restart dnsmasq
+sudo systemctl restart dnsmasq
+```
+
+### Windows (Acrylic DNS Proxy)
+
+dnsmasq is not available on Windows. Use [Acrylic DNS Proxy](https://mayakron.altervista.org/support/acrylic/Home.htm) instead:
+
+1. Install Acrylic DNS Proxy
+2. Edit `AcrylicHosts.txt`, add: `127.0.0.1 *.test`
+3. Set your network adapter DNS to `127.0.0.1`
+
+Alternatively, use **WSL2** and follow the Linux setup inside your WSL distribution.
 
 ## How It Works
 
