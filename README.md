@@ -2,7 +2,7 @@
 
 Unified Docker development environment that automatically serves **any project** in the workspace — no per-project configuration needed.
 
-Clone any project into your workspace folder and it's instantly accessible via `http://<folder>.test:81`. Powered by wildcard nginx + dnsmasq.
+Clone any project into your workspace folder and it's instantly accessible via `http://<folder>.<repo-name>.test:81`. Powered by wildcard nginx + dnsmasq.
 
 ## Services
 
@@ -53,23 +53,29 @@ docker compose up -d --build
 ### URL Format
 
 ```
-http://<folder>.<anything>.test:81
+http://<folder>.<repo-name>.test:81
 ```
 
-Examples:
-- `http://my-project.my-project.test:81` → `/var/www/html/my-project/public`
-- `http://wt-my-project-fix.my-project.test:81` → `/var/www/html/wt-my-project-fix/public`
+Only the **first segment** (`<folder>`) determines which folder is served. The second segment (`<repo-name>`) is for DNS routing.
 
-Only the **first segment** determines which folder is served. The rest is for DNS routing.
+### Main checkout (master)
 
-## Adding a Project
-
-Just clone it. That's it.
+For a regular clone, `<folder>` and `<repo-name>` are the same:
 
 ```bash
 cd ~/Workspace
 git clone https://github.com/org/my-project.git
 # → http://my-project.my-project.test:81
+```
+
+### Worktrees (parallel branches)
+
+If you use [git worktrees](https://git-scm.com/docs/git-worktree) to work on multiple branches simultaneously, each worktree gets its own folder — and its own URL:
+
+```bash
+cd ~/Workspace/my-project
+git worktree add ../wt-my-project-fix-login feature/fix-login
+# → http://wt-my-project-fix-login.my-project.test:81
 ```
 
 No nginx config, no hosts file, no restart. It just works.
