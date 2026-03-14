@@ -1,85 +1,139 @@
-# Workspace Docker Environment v2.0.0
+# Workspace Docker Environment
 
-Unified Docker development environment that automatically serves any project in the workspace — no per-project configuration needed.
+Unified Docker development environment that automatically serves **any project** in the workspace — no per-project configuration needed.
 
-## Changelog (from jupaygon/docker)
-
-- **v2.0.0** — Unified workspace: wildcard nginx, single volume mount, `dj_` prefix, dnsmasq setup, agent docs.
+Clone any project into your workspace folder and it's instantly accessible via `http://<folder>.<repo-name>.test:81`. Powered by wildcard nginx + dnsmasq.
 
 ## Services
 
-| Service    | Container      | Port          |
-|------------|----------------|---------------|
-| Nginx      | dj_nginx       | 81 → 80      |
-| PHP 8.4    | dj_php         | (internal)    |
-| MySQL 8.0  | dj_mysql       | 3307 → 3306  |
-| Redis      | dj_redis       | 6379          |
-| Memcached  | dj_memcached   | 11211         |
-| RabbitMQ   | dj_rabbitmq    | 5672 / 15672  |
-| phpMyAdmin | dj_phpmyadmin  | 8080 → 80    |
+| Service    | Container      | Port          | Image             |
+|------------|----------------|---------------|--------------------|
+| Nginx      | dj_nginx       | 81 → 80      | nginx:latest       |
+| PHP        | dj_php         | (internal)    | php:8.4-fpm        |
+| MySQL      | dj_mysql       | 3307 → 3306  | mysql:8.0          |
+| PostgreSQL | dj_postgres    | 5432          | postgres:16-alpine |
+| Redis      | dj_redis       | 6379          | redis:latest       |
+| Memcached  | dj_memcached   | 11211         | memcached:latest   |
+| RabbitMQ   | dj_rabbitmq    | 5672 / 15672  | rabbitmq:3-mgmt    |
+| phpMyAdmin | dj_phpmyadmin  | 8080 → 80    | phpmyadmin:latest  |
 
 ## Requirements
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Homebrew](https://brew.sh) (for dnsmasq on macOS)
+- [Docker Desktop](https://docker.com/products/docker-desktop/) (or Docker Engine on Linux)
+- DNS wildcard resolution for `*.test` (see [DNS Setup](#dns-setup) below)
 
-## Installation
+## Quick Start
 
 ```bash
-# 1. Clone this repo inside your workspace
+# 1. Clone into your workspace
 cd ~/Workspace
-git clone git@github.com:jupaygon/docker.git
+git clone https://github.com/jupaygon/docker.git
 
-# 2. Configure DNS (one-time setup)
-./docker/scripts/setup-dnsmasq.sh
+# 2. Configure DNS (one-time, see DNS Setup section)
+./docker/scripts/setup-dnsmasq.sh   # macOS
 
-# 3. Copy and configure agent credentials (optional)
-cp docker/.github.conf.dist docker/.github.conf
-# Edit .github.conf with your agent token
-
-# 4. Start services
+# 3. Start services
 cd docker
+cp .env.dist .env
 docker compose up -d --build
 ```
+
+## DNS Setup
+
+All `*.test` domains must resolve to `127.0.0.1`. Choose your platform:
+
+### macOS (Homebrew + dnsmasq)
+
+```bash
+./scripts/setup-dnsmasq.sh
+```
+
+This installs dnsmasq via Homebrew, adds `address=/test/127.0.0.1`, and creates `/etc/resolver/test`.
+
+### Linux (dnsmasq)
+
+```bash
+# Install dnsmasq
+sudo apt install dnsmasq        # Debian/Ubuntu
+sudo dnf install dnsmasq        # Fedora/RHEL
+
+# Configure wildcard
+echo "address=/test/127.0.0.1" | sudo tee /etc/dnsmasq.d/test.conf
+
+# If systemd-resolved is running (Ubuntu 18+), configure it to delegate .test:
+sudo mkdir -p /etc/systemd/resolved.conf.d
+echo -e "[Resolve]\nDNS=127.0.0.1\nDomains=~test" | sudo tee /etc/systemd/resolved.conf.d/test.conf
+sudo systemctl restart systemd-resolved
+
+# Restart dnsmasq
+sudo systemctl restart dnsmasq
+```
+
+### Windows (Acrylic DNS Proxy)
+
+dnsmasq is not available on Windows. Use [Acrylic DNS Proxy](https://mayakron.altervista.org/support/acrylic/Home.htm) instead:
+
+1. Install Acrylic DNS Proxy
+2. Edit `AcrylicHosts.txt`, add: `127.0.0.1 *.test`
+3. Set your network adapter DNS to `127.0.0.1`
+
+Alternatively, use **WSL2** and follow the Linux setup inside your WSL distribution.
 
 ## How It Works
 
 ### Wildcard Nginx + dnsmasq
 
 1. **dnsmasq** resolves all `*.test` domains to `127.0.0.1`
-2. **Nginx** uses a regex server block that captures the first subdomain segment as the folder name:
+2. **Nginx** captures the first subdomain segment as the folder name:
    ```
    server_name ~^(?<folder>[^.]+)\.;
    root /var/www/html/$folder/public;
    ```
-3. The entire workspace is mounted as a single volume: `${WORKSPACE_PATH:-..}:/var/www/html`
+3. The entire workspace is mounted as a single volume
 
 ### URL Format
 
 ```
-http://<folder>.<project>.test:81
+http://<folder>.<repo-name>.test:81
 ```
 
-- `my-project.my-project.test:81` → `/var/www/html/my-project/public`
-- `wt-my-project-zn-123-slug.my-project.test:81` → `/var/www/html/wt-my-project-zn-123-slug/public`
+Only the **first segment** (`<folder>`) determines which folder is served. The second segment (`<repo-name>`) is for DNS routing.
 
-The second segment (`<project>`) is used for DNS routing but **only the first segment** (`<folder>`) determines which folder is served.
+### Main checkout (master)
 
-## Adding a Project
-
-Just clone it into the workspace. That's it.
+For a regular clone, `<folder>` and `<repo-name>` are the same:
 
 ```bash
 cd ~/Workspace
-git clone git@github.com:org/my-project.git
+git clone https://github.com/org/my-project.git
+# → http://my-project.my-project.test:81
 ```
 
-Then access it at: `http://my-project.my-project.test:81`
+### Worktrees (parallel branches)
 
-## Shell Aliases (.zshrc)
+If you use [git worktrees](https://git-scm.com/docs/git-worktree) to work on multiple branches simultaneously, each worktree gets its own folder — and its own URL:
 
 ```bash
-# Workspace Docker aliases
+cd ~/Workspace/my-project
+git worktree add ../wt-my-project-fix-login feature/fix-login
+# → http://wt-my-project-fix-login.my-project.test:81
+```
+
+No nginx config, no hosts file, no restart. It just works.
+
+## PHP Extensions
+
+The PHP container includes everything you'd need for a modern Symfony/Laravel stack:
+
+`redis` · `amqp` · `imagick` · `zip` · `xml` · `mbstring` · `bcmath` · `soap` · `intl` · `gd` · `xsl` · `opcache` · `pdo_mysql` · `pdo_pgsql` · `memcached` · `xdebug`
+
+Plus Composer and Deployer pre-installed.
+
+## Shell Aliases
+
+Add to your `.zshrc`:
+
+```bash
 export DJ_HOME="$HOME/Workspace"
 
 # Login into containers
@@ -88,87 +142,62 @@ alias dj-docker-mysql="docker exec -ti dj_mysql bash"
 alias dj-docker-nginx="docker exec -ti dj_nginx bash"
 alias dj-docker-redis="docker exec -ti dj_redis redis-cli"
 
-# See docker containers and images
-alias dj-docker-ps="docker ps | grep dj_"
-alias dj-docker-images="docker images | grep dj_"
-
-# Docker compose shortcut (e.g. dj-docker logs dj_php)
+# Docker compose shortcut
 alias dj-docker="docker compose -f $DJ_HOME/docker/docker-compose.yml"
 
-# Start / build / stop
+# Start / stop
 alias dj-docker-up="$DJ_HOME/docker/scripts/docker-up.sh"
 alias dj-docker-build="dj-docker up --build -d"
 alias dj-docker-down="$DJ_HOME/docker/scripts/docker-down.sh"
 
-# Quick access to services UI
+# Service UIs
 alias dj-docker-rabbit="open http://localhost:15672"
 alias dj-docker-pma="open http://localhost:8080"
 
-# Remove all dj_ containers
-dj-docker-rm() {
-  docker rm $(docker ps -a | grep 'dj_' | awk '{print $1}')
-}
-# Remove all dj_ images
-dj-docker-rmi() {
-  docker rmi $(docker images -a | grep 'dj_' | awk '{print $3}')
-}
+# Monitoring
+alias dj-docker-ps="docker ps | grep dj_"
+alias dj-docker-images="docker images | grep dj_"
 ```
 
-Add to your `.zshrc` (or `.bashrc`) and reload:
+| Command            | Description                           |
+|--------------------|---------------------------------------|
+| `dj-docker-php`    | Shell into PHP container              |
+| `dj-docker-mysql`  | Shell into MySQL container            |
+| `dj-docker-redis`  | Redis CLI                             |
+| `dj-docker`        | Docker compose shortcut               |
+| `dj-docker-up`     | Start containers                      |
+| `dj-docker-down`   | Stop containers (backs up databases)  |
+| `dj-docker-build`  | Rebuild and start containers          |
+| `dj-docker-rabbit` | Open RabbitMQ Management UI           |
+| `dj-docker-pma`    | Open phpMyAdmin                       |
 
-```bash
-source ~/.zshrc
-```
+## Scripts
 
-**Commands reference:**
-
-| Command            | Description                                |
-|--------------------|--------------------------------------------|
-| `dj-docker-php`    | Login into PHP container                   |
-| `dj-docker-mysql`  | Login into MySQL container                 |
-| `dj-docker-nginx`  | Login into Nginx container                 |
-| `dj-docker-redis`  | Login into Redis CLI                       |
-| `dj-docker-ps`     | List running dj_ containers               |
-| `dj-docker-images` | List dj_ images                            |
-| `dj-docker`        | Docker compose shortcut (e.g. `dj-docker logs`) |
-| `dj-docker-up`     | Start containers                           |
-| `dj-docker-build`  | Build and start containers                 |
-| `dj-docker-down`   | Stop containers                            |
-| `dj-docker-rm`     | Remove all dj_ containers                  |
-| `dj-docker-rmi`    | Remove all dj_ images                      |
-| `dj-docker-rabbit` | Open RabbitMQ UI                           |
-| `dj-docker-pma`    | Open phpMyAdmin                            |
-
-## Ports & Services
-
-| Port  | Service                      |
-|-------|------------------------------|
-| 81    | Nginx (HTTP)                 |
-| 3307  | MySQL                        |
-| 5672  | RabbitMQ (AMQP)              |
-| 15672 | RabbitMQ (Management UI)     |
-| 6379  | Redis                        |
-| 11211 | Memcached                    |
-| 8080  | phpMyAdmin                   |
+| Script                        | Description                                        |
+|-------------------------------|----------------------------------------------------|
+| `scripts/setup-dnsmasq.sh`    | One-time DNS setup (installs and configures dnsmasq)|
+| `scripts/docker-up.sh`        | Start containers with credentials support          |
+| `scripts/docker-down.sh`      | Stop containers with automatic database backup     |
+| `scripts/db-sync.sh`          | Interactive database sync from remote servers      |
 
 ## Troubleshooting
 
 ### DNS not resolving *.test
 
 ```bash
-# Verify dnsmasq is running
+# Verify dnsmasq
 brew services list | grep dnsmasq
 
 # Test resolution
 dig test-project.test @127.0.0.1
 
-# Re-run setup if needed
+# Re-run setup
 ./scripts/setup-dnsmasq.sh
 ```
 
-### Site returns 404 or "directory index of ... is forbidden"
+### Site returns 404
 
-- Ensure the project has a `public/` directory with an `index.php`
+- Ensure the project has a `public/` directory with an `index.php` or `index.html`
 - Check the folder name matches the first subdomain segment exactly
 
 ### MySQL connection from PHP
@@ -176,14 +205,20 @@ dig test-project.test @127.0.0.1
 ```
 Host: dj_mysql
 Port: 3306
-User: root / dev
+User: root | dev
 Password: password
 ```
 
-### Container names conflict
+### PostgreSQL connection from PHP
 
-If you have other Docker environments using the same ports, stop them first:
-
-```bash
-docker compose -f ~/path/to/other/docker-compose.yml down
 ```
+Host: dj_postgres
+Port: 5432
+User: app
+Password: password
+Database: app
+```
+
+## License
+
+MIT
