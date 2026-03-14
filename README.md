@@ -197,7 +197,7 @@ dig test-project.test @127.0.0.1
 
 ### Site returns 404
 
-- Ensure the project has a `public/` directory with an `index.php`
+- Ensure the project has a `public/` directory with an `index.php` or `index.html`
 - Check the folder name matches the first subdomain segment exactly
 
 ### MySQL connection from PHP
