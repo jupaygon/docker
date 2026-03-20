@@ -28,6 +28,23 @@ else
   echo "  No user databases found, skipping backup."
 fi
 
+
+# Backup PostgreSQL databases (except system ones) before stopping
+echo "Backing up PostgreSQL databases..."
+PG_DUMPS_DIR="$DOCKER_DIR/images/postgres/dumps"
+
+PG_DATABASES=$(docker exec dj_postgres psql -U app -d app -At -c \
+  "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres', 'app')" 2>/dev/null)
+
+if [ -n "$PG_DATABASES" ]; then
+  for DB in $PG_DATABASES; do
+    echo "  Dumping PostgreSQL: $DB..."
+    docker exec dj_postgres pg_dump -U app --clean --if-exists "$DB" > "$PG_DUMPS_DIR/${DB}.sql" 2>/dev/null
+  done
+  echo "PostgreSQL backups saved in images/postgres/dumps/"
+else
+  echo "  No PostgreSQL user databases found, skipping backup."
+fi
 # Stop containers
 echo "Stopping Docker environment..."
 docker compose -f "$DOCKER_DIR/docker-compose.yml" down
