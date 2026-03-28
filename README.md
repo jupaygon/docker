@@ -1,21 +1,40 @@
 # Workspace Docker Environment
 
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![PHP](https://img.shields.io/badge/PHP-8.4--FPM-777BB4?logo=php&logoColor=white)](https://php.net)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://mysql.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![Redis](https://img.shields.io/badge/Redis-latest-DC382D?logo=redis&logoColor=white)](https://redis.io)
+[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-3--mgmt-FF6600?logo=rabbitmq&logoColor=white)](https://rabbitmq.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Unified Docker development environment that automatically serves **any project** in the workspace — no per-project configuration needed.
 
 Clone any project into your workspace folder and it's instantly accessible via `http://<folder>.<repo-name>.test:81`. Powered by wildcard nginx + dnsmasq.
 
+### Key Features
+
+- **Zero configuration** — clone a project and it's served instantly, no vhosts or hosts file edits
+- **Wildcard DNS + nginx** — dnsmasq resolves `*.test`, nginx routes by subdomain to the right folder
+- **Git worktree support** — each worktree gets its own URL automatically
+- **Full PHP stack** — 30+ extensions, Composer, Deployer, Xdebug pre-installed
+- **Automatic database backups** — MySQL and PostgreSQL are backed up on `docker-down`
+- **Database sync** — pull production/staging databases via SSH with one command
+- **Multi-platform DNS** — setup scripts for macOS, Linux and Windows
+
 ## Services
 
-| Service    | Container      | Port          | Image             |
-|------------|----------------|---------------|--------------------|
-| Nginx      | dj_nginx       | 81 → 80      | nginx:latest       |
-| PHP        | dj_php         | (internal)    | php:8.4-fpm        |
-| MySQL      | dj_mysql       | 3307 → 3306  | mysql:8.0          |
-| PostgreSQL | dj_postgres    | 5432          | postgres:16-alpine |
-| Redis      | dj_redis       | 6379          | redis:latest       |
-| Memcached  | dj_memcached   | 11211         | memcached:latest   |
-| RabbitMQ   | dj_rabbitmq    | 5672 / 15672  | rabbitmq:3-mgmt    |
-| phpMyAdmin | dj_phpmyadmin  | 8080 → 80    | phpmyadmin:latest  |
+| Service    | Container      | Port          | Image              |
+|------------|----------------|---------------|---------------------|
+| Nginx      | dj_nginx       | 81 → 80      | nginx:latest        |
+| PHP        | dj_php         | (internal)    | php:8.4-fpm         |
+| MySQL      | dj_mysql       | 3307 → 3306  | mysql:8.0           |
+| PostgreSQL | dj_postgres    | 5432          | postgres:16-alpine  |
+| Redis      | dj_redis       | 6379          | redis:latest        |
+| Memcached  | dj_memcached   | 11211         | memcached:latest    |
+| RabbitMQ   | dj_rabbitmq    | 5672 / 15672  | rabbitmq:3-mgmt     |
+| phpMyAdmin | dj_phpmyadmin  | 8080 → 80    | phpmyadmin:latest   |
+| pgAdmin    | dj_pgadmin     | 5050          | dpage/pgadmin4      |
 
 ## Requirements
 
@@ -218,6 +237,16 @@ User: app
 Password: password
 Database: app
 ```
+
+### Database Management UIs
+
+| Tool       | URL                          |
+|------------|------------------------------|
+| phpMyAdmin | http://localhost:8080         |
+| pgAdmin    | http://localhost:5050         |
+| RabbitMQ   | http://localhost:15672        |
+
+pgAdmin default credentials: `admin@admin.com` / `admin`.
 
 ## License
 
