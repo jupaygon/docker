@@ -16,29 +16,67 @@ fi
 
 source "$ENV_FILE"
 
-if [ -z "$DB_SYNC_DATABASES" ] || [ -z "$DB_SYNC_SERVERS" ]; then
-  echo "ERROR: DB_SYNC_DATABASES and DB_SYNC_SERVERS must be set in .env"
+if [ -z "$DB_SYNC_DATABASES" ]; then
+  echo "ERROR: DB_SYNC_DATABASES must be set in .env"
   exit 1
 fi
 
-# Parse "name:path,name:path" into parallel arrays
+# Parse database entries.
+# Supported formats per entry (comma-separated):
+#   1) name:path                          -> engine=mysql, server picked from DB_SYNC_SERVERS
+#   2) name:engine:path                   -> server picked from DB_SYNC_SERVERS
+#   3) name:engine:server:path            -> fully bound, no server prompt
 DB_NAMES=()
+DB_ENGINES=()
+DB_SERVERS=()
 DB_PATHS=()
 IFS=',' read -ra DB_ENTRIES <<< "$DB_SYNC_DATABASES"
 for entry in "${DB_ENTRIES[@]}"; do
-  DB_NAMES+=("${entry%%:*}")
-  DB_PATHS+=("${entry#*:}")
+  IFS=':' read -ra PARTS <<< "$entry"
+  case "${#PARTS[@]}" in
+    2)
+      DB_NAMES+=("${PARTS[0]}")
+      DB_ENGINES+=("mysql")
+      DB_SERVERS+=("")
+      DB_PATHS+=("${PARTS[1]}")
+      ;;
+    3)
+      DB_NAMES+=("${PARTS[0]}")
+      DB_ENGINES+=("${PARTS[1]}")
+      DB_SERVERS+=("")
+      DB_PATHS+=("${PARTS[2]}")
+      ;;
+    4)
+      DB_NAMES+=("${PARTS[0]}")
+      DB_ENGINES+=("${PARTS[1]}")
+      DB_SERVERS+=("${PARTS[2]}")
+      DB_PATHS+=("${PARTS[3]}")
+      ;;
+    *)
+      echo "ERROR: invalid DB_SYNC_DATABASES entry: $entry"
+      echo "Expected: name:path | name:engine:path | name:engine:server:path"
+      exit 1
+      ;;
+  esac
 done
 
-# Parse "host,host" into array
-IFS=',' read -ra SERVERS <<< "$DB_SYNC_SERVERS"
+# Parse "host,host" into array (only required if any DB has no bound server)
+SERVERS=()
+if [ -n "$DB_SYNC_SERVERS" ]; then
+  IFS=',' read -ra SERVERS <<< "$DB_SYNC_SERVERS"
+fi
 
 # Local paths
-DUMPS_DIR="$PROJECT_DIR/images/mysql/dumps"
+MYSQL_DUMPS_DIR="$PROJECT_DIR/images/mysql/dumps"
+POSTGRES_DUMPS_DIR="$PROJECT_DIR/images/postgres/dumps"
 
 # Docker
 MYSQL_CONTAINER="dj_mysql"
 MYSQL_ROOT_PASSWORD="password"
+
+POSTGRES_CONTAINER="dj_postgres"
+POSTGRES_USER="app"
+POSTGRES_ADMIN_DB="postgres"
 
 # =============================================================================
 # Functions
@@ -49,16 +87,24 @@ ask_database() {
   echo "Which database do you want to sync?"
   echo ""
   for i in "${!DB_NAMES[@]}"; do
-    echo "  $((i + 1))) ${DB_NAMES[$i]}"
+    label="${DB_NAMES[$i]} (${DB_ENGINES[$i]}"
+    if [ -n "${DB_SERVERS[$i]}" ]; then
+      label="$label @ ${DB_SERVERS[$i]}"
+    fi
+    label="$label)"
+    echo "  $((i + 1))) $label"
   done
   echo ""
 
   while true; do
     read -rp "Choose [1-${#DB_NAMES[@]}]: " choice
     if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#DB_NAMES[@]}" ]; then
-      SELECTED_DB="${DB_NAMES[$((choice - 1))]}"
-      SELECTED_DB_PATH="${DB_PATHS[$((choice - 1))]}"
-      echo "  -> Selected database: $SELECTED_DB"
+      idx=$((choice - 1))
+      SELECTED_DB="${DB_NAMES[$idx]}"
+      SELECTED_ENGINE="${DB_ENGINES[$idx]}"
+      SELECTED_SERVER="${DB_SERVERS[$idx]}"
+      SELECTED_DB_PATH="${DB_PATHS[$idx]}"
+      echo "  -> Selected database: $SELECTED_DB ($SELECTED_ENGINE)"
       return
     fi
     echo "  Invalid option. Try again."
@@ -66,6 +112,17 @@ ask_database() {
 }
 
 ask_server() {
+  # Skip prompt if database entry already binds a server
+  if [ -n "$SELECTED_SERVER" ]; then
+    echo "  -> Using bound server: $SELECTED_SERVER"
+    return
+  fi
+
+  if [ ${#SERVERS[@]} -eq 0 ]; then
+    echo "ERROR: database $SELECTED_DB has no bound server and DB_SYNC_SERVERS is empty"
+    exit 1
+  fi
+
   echo ""
   echo "From which server?"
   echo ""
@@ -83,6 +140,18 @@ ask_server() {
     fi
     echo "  Invalid option. Try again."
   done
+}
+
+resolve_dumps_dir() {
+  case "$SELECTED_ENGINE" in
+    mysql)    DUMPS_DIR="$MYSQL_DUMPS_DIR" ;;
+    postgres) DUMPS_DIR="$POSTGRES_DUMPS_DIR" ;;
+    *)
+      echo "ERROR: unsupported engine '$SELECTED_ENGINE' (expected: mysql | postgres)"
+      exit 1
+      ;;
+  esac
+  mkdir -p "$DUMPS_DIR"
 }
 
 download_dumps() {
@@ -117,18 +186,13 @@ download_dumps() {
     fi
   done
 
-  if [ $? -ne 0 ]; then
-    exit 1
-  fi
-
   echo "Download complete."
 }
 
-import_dumps() {
+import_dumps_mysql() {
   echo ""
   echo "Importing dumps into container $MYSQL_CONTAINER ..."
 
-  # Get local .sql files for this database, sorted alphabetically
   local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql 2>/dev/null | sort)
 
   if [ -z "$local_files" ]; then
@@ -147,12 +211,60 @@ import_dumps() {
     echo "  $filename imported OK"
   done
 
-  if [ $? -ne 0 ]; then
+  echo ""
+  echo "All dumps imported successfully."
+}
+
+import_dumps_postgres() {
+  echo ""
+  echo "Importing dumps into container $POSTGRES_CONTAINER ..."
+
+  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql 2>/dev/null | sort)
+
+  if [ -z "$local_files" ]; then
+    echo "ERROR: No .sql files found in $DUMPS_DIR for database $SELECTED_DB"
     exit 1
   fi
 
+  # Drop and recreate target database to guarantee a clean import
+  echo "  Recreating database '$SELECTED_DB' on $POSTGRES_CONTAINER ..."
+  docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_ADMIN_DB" \
+    -c "DROP DATABASE IF EXISTS \"$SELECTED_DB\";" >/dev/null
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to drop database $SELECTED_DB"
+    exit 1
+  fi
+  docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_ADMIN_DB" \
+    -c "CREATE DATABASE \"$SELECTED_DB\" OWNER \"$POSTGRES_USER\";" >/dev/null
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to create database $SELECTED_DB"
+    exit 1
+  fi
+
+  echo "$local_files" | while read -r sql_file; do
+    filename=$(basename "$sql_file")
+    echo "  Importing $filename ..."
+    docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$SELECTED_DB" -v ON_ERROR_STOP=1 < "$sql_file"
+    if [ $? -ne 0 ]; then
+      echo "ERROR: Failed to import $filename"
+      exit 1
+    fi
+    echo "  $filename imported OK"
+  done
+
   echo ""
   echo "All dumps imported successfully."
+}
+
+import_dumps() {
+  case "$SELECTED_ENGINE" in
+    mysql)    import_dumps_mysql ;;
+    postgres) import_dumps_postgres ;;
+    *)
+      echo "ERROR: unsupported engine '$SELECTED_ENGINE'"
+      exit 1
+      ;;
+  esac
 }
 
 # =============================================================================
@@ -164,6 +276,7 @@ echo "=== DB Sync ==="
 
 ask_database
 ask_server
+resolve_dumps_dir
 download_dumps
 import_dumps
 
