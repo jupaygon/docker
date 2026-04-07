@@ -167,7 +167,9 @@ download_dumps() {
   fi
 
   echo "Found:"
-  echo "$remote_files" | while read -r f; do echo "  - $(basename "$f")"; done
+  while IFS= read -r f; do
+    echo "  - $(basename "$f")"
+  done <<< "$remote_files"
 
   # Clean previous dumps for this database in local dir
   echo ""
@@ -176,15 +178,14 @@ download_dumps() {
 
   # Download each file
   echo "Downloading dumps to $DUMPS_DIR ..."
-  echo "$remote_files" | while read -r remote_file; do
+  while IFS= read -r remote_file; do
     local_file="$DUMPS_DIR/$(basename "$remote_file")"
     echo "  scp $SELECTED_SERVER:$remote_file -> $local_file"
-    scp "$SELECTED_SERVER":"$remote_file" "$local_file"
-    if [ $? -ne 0 ]; then
+    if ! scp "$SELECTED_SERVER":"$remote_file" "$local_file"; then
       echo "ERROR: Failed to download $remote_file"
       exit 1
     fi
-  done
+  done <<< "$remote_files"
 
   echo "Download complete."
 }
@@ -200,16 +201,15 @@ import_dumps_mysql() {
     exit 1
   fi
 
-  echo "$local_files" | while read -r sql_file; do
+  while IFS= read -r sql_file; do
     filename=$(basename "$sql_file")
     echo "  Importing $filename ..."
-    docker exec -i "$MYSQL_CONTAINER" mysql -uroot -p"$MYSQL_ROOT_PASSWORD" < "$sql_file"
-    if [ $? -ne 0 ]; then
+    if ! docker exec -i "$MYSQL_CONTAINER" mysql -uroot -p"$MYSQL_ROOT_PASSWORD" < "$sql_file"; then
       echo "ERROR: Failed to import $filename"
       exit 1
     fi
     echo "  $filename imported OK"
-  done
+  done <<< "$local_files"
 
   echo ""
   echo "All dumps imported successfully."
@@ -241,16 +241,15 @@ import_dumps_postgres() {
     exit 1
   fi
 
-  echo "$local_files" | while read -r sql_file; do
+  while IFS= read -r sql_file; do
     filename=$(basename "$sql_file")
     echo "  Importing $filename ..."
-    docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$SELECTED_DB" -v ON_ERROR_STOP=1 < "$sql_file"
-    if [ $? -ne 0 ]; then
+    if ! docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$SELECTED_DB" -v ON_ERROR_STOP=1 < "$sql_file"; then
       echo "ERROR: Failed to import $filename"
       exit 1
     fi
     echo "  $filename imported OK"
-  done
+  done <<< "$local_files"
 
   echo ""
   echo "All dumps imported successfully."
