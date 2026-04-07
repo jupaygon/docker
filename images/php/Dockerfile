@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     telnet \
     default-mysql-client \
+    postgresql-client \
     openssh-client \
     entr \
     && pecl install xdebug redis amqp imagick \
