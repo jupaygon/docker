@@ -23,6 +23,8 @@ services:
       dockerfile: 'php/Dockerfile'
     environment:
       - GITHUB_TOKEN
+    extra_hosts:
+      - "zeronet-dashboard.zeronet-dashboard.test:host-gateway"
     volumes:
       - ~/.ssh:/root/.ssh:ro
       - ${WORKSPACE_PATH:-..}:/var/www/html
