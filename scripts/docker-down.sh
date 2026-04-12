@@ -45,6 +45,17 @@ if [ -n "$PG_DATABASES" ]; then
 else
   echo "  No PostgreSQL user databases found, skipping backup."
 fi
+
+# Stop project workers
+WORKSPACE_DIR="$(dirname "$DOCKER_DIR")"
+for worker_file in "$WORKSPACE_DIR"/*/docker-compose.worker.yml; do
+  [ -f "$worker_file" ] || continue
+  project_dir="$(dirname "$worker_file")"
+  project_name="$(basename "$project_dir")"
+  echo "Stopping worker for $project_name..."
+  docker compose -f "$worker_file" down
+done
+
 # Stop containers
 echo "Stopping Docker environment..."
 docker compose -f "$DOCKER_DIR/docker-compose.yml" down

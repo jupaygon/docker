@@ -18,4 +18,14 @@ fi
 echo "Starting Workspace Docker environment..."
 docker compose -f "$DOCKER_DIR/docker-compose.yml" up -d
 
+# Start project workers (any sibling repo with docker-compose.worker.yml)
+WORKSPACE_DIR="$(dirname "$DOCKER_DIR")"
+for worker_file in "$WORKSPACE_DIR"/*/docker-compose.worker.yml; do
+  [ -f "$worker_file" ] || continue
+  project_dir="$(dirname "$worker_file")"
+  project_name="$(basename "$project_dir")"
+  echo "Starting worker for $project_name..."
+  docker compose -f "$worker_file" up -d --build
+done
+
 echo "Done!"
