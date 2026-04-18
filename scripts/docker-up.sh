@@ -24,6 +24,8 @@ for worker_file in "$WORKSPACE_DIR"/*/docker-compose.worker.yml; do
   [ -f "$worker_file" ] || continue
   project_dir="$(dirname "$worker_file")"
   project_name="$(basename "$project_dir")"
+  # Skip git worktrees — they share the main repo's worker
+  case "$project_name" in wt-*) continue;; esac
   echo "Starting worker for $project_name..."
   docker compose -f "$worker_file" up -d --build
 done
