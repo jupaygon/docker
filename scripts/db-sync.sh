@@ -241,10 +241,20 @@ import_dumps_postgres() {
     exit 1
   fi
 
+  # Wrap each dump in `session_replication_role = replica` so FK ordering
+  # in the dump cannot break the import. pg_dump emits INSERTs in OID
+  # order, not topological order, so a child row that references a parent
+  # still to be inserted (e.g. task.parent_task_id -> task.id) fails a
+  # FK check otherwise. Requires superuser on the local cluster — already
+  # the case for dj_postgres.
   while IFS= read -r sql_file; do
     filename=$(basename "$sql_file")
     echo "  Importing $filename ..."
-    if ! docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$SELECTED_DB" -v ON_ERROR_STOP=1 < "$sql_file"; then
+    if ! {
+      printf "SET session_replication_role = 'replica';\n"
+      cat "$sql_file"
+      printf "\nSET session_replication_role = 'origin';\n"
+    } | docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$SELECTED_DB" -v ON_ERROR_STOP=1; then
       echo "ERROR: Failed to import $filename"
       exit 1
     fi
