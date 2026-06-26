@@ -112,13 +112,19 @@ ask_database() {
 }
 
 ask_server() {
-  # Skip prompt if database entry already binds a server
+  # Candidates: a server bound on the entry (one, or a srvA|srvB list) takes
+  # precedence over the global DB_SYNC_SERVERS list. A single bound server skips
+  # the prompt; a list (or the global fallback) prompts.
+  local -a candidates
   if [ -n "$SELECTED_SERVER" ]; then
-    echo "  -> Using bound server: $SELECTED_SERVER"
-    return
-  fi
-
-  if [ ${#SERVERS[@]} -eq 0 ]; then
+    IFS='|' read -ra candidates <<< "$SELECTED_SERVER"
+    if [ "${#candidates[@]}" -eq 1 ]; then
+      echo "  -> Using bound server: $SELECTED_SERVER"
+      return
+    fi
+  elif [ ${#SERVERS[@]} -gt 0 ]; then
+    candidates=("${SERVERS[@]}")
+  else
     echo "ERROR: database $SELECTED_DB has no bound server and DB_SYNC_SERVERS is empty"
     exit 1
   fi
@@ -126,15 +132,15 @@ ask_server() {
   echo ""
   echo "From which server?"
   echo ""
-  for i in "${!SERVERS[@]}"; do
-    echo "  $((i + 1))) ${SERVERS[$i]}"
+  for i in "${!candidates[@]}"; do
+    echo "  $((i + 1))) ${candidates[$i]}"
   done
   echo ""
 
   while true; do
-    read -rp "Choose [1-${#SERVERS[@]}]: " choice
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#SERVERS[@]}" ]; then
-      SELECTED_SERVER="${SERVERS[$((choice - 1))]}"
+    read -rp "Choose [1-${#candidates[@]}]: " choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#candidates[@]}" ]; then
+      SELECTED_SERVER="${candidates[$((choice - 1))]}"
       echo "  -> Selected server: $SELECTED_SERVER"
       return
     fi
