@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
     openssh-client \
     entr \
     age \
+    rsync \
     && pecl install xdebug redis amqp imagick \
     && docker-php-ext-enable xdebug redis amqp imagick \
     && docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pdo_sqlite zip xml mbstring bcmath soap intl gd xsl opcache pcntl \
