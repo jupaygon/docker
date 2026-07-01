@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     libmcrypt-dev \
     libxml2-dev \
     libssl-dev \
+    libsnmp-dev \
     graphviz \
     procps \
     libpq-dev \
@@ -32,7 +33,7 @@ RUN apt-get update && apt-get install -y \
     rsync \
     && pecl install xdebug redis amqp imagick \
     && docker-php-ext-enable xdebug redis amqp imagick \
-    && docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pdo_sqlite zip xml mbstring bcmath soap intl gd xsl opcache pcntl \
+    && docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pdo_sqlite zip xml mbstring bcmath soap intl gd xsl opcache pcntl snmp \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
