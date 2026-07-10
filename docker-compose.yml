@@ -23,6 +23,9 @@ services:
       dockerfile: 'php/Dockerfile'
     environment:
       - GITHUB_TOKEN
+      # Composer reads COMPOSER_AUTH natively (private repos + 5000 req/h). Derived
+      # from GITHUB_TOKEN so the .env token is the single source; survives recreate.
+      - 'COMPOSER_AUTH={"github-oauth":{"github.com":"${GITHUB_TOKEN}"}}'
     extra_hosts:
       - "zeronet-dashboard.zeronet-dashboard.test:host-gateway"
     volumes:
