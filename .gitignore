@@ -1,0 +1,9 @@
+.env
+docker-compose.override.yml
+images/mysql/dumps/*.sql
+images/postgres/dumps/*.sql
+images/nginx/conf.d/[0-9][0-9]-local-*.conf
+.claude/
+.idea/
+.vscode/
+.DS_Store

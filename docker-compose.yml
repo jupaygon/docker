@@ -1,0 +1,161 @@
+services:
+  nginx:
+    image: dj_nginx
+    container_name: dj_nginx
+    hostname: dj_nginx
+    build:
+      context: './images'
+      dockerfile: 'nginx/Dockerfile'
+    ports:
+      - "81:80"
+    volumes:
+      - ./images/nginx/conf.d:/etc/nginx/conf.d
+      - ${WORKSPACE_PATH:-..}:/var/www/html
+    depends_on:
+      - php
+
+  php:
+    image: dj_php
+    container_name: dj_php
+    hostname: dj_php
+    build:
+      context: './images'
+      dockerfile: 'php/Dockerfile'
+    environment:
+      # Both read from .env, which is the single source for the token. The bare
+      # `- GITHUB_TOKEN` form would take it from the calling shell instead.
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      # Composer reads COMPOSER_AUTH natively (private repos + 5000 req/h).
+      - 'COMPOSER_AUTH={"github-oauth":{"github.com":"${GITHUB_TOKEN}"}}'
+    volumes:
+      - ~/.ssh:/root/.ssh:ro
+      - ${WORKSPACE_PATH:-..}:/var/www/html
+    depends_on:
+      - mysql
+      - memcached
+      - rabbitmq
+      - redis
+      - postgres
+
+  mysql:
+    image: dj_mysql
+    build:
+      context: './images'
+      dockerfile: 'mysql/Dockerfile'
+    container_name: dj_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_USER: dev
+      MYSQL_PASSWORD: password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./images/mysql/conf.d/:/etc/mysql/conf.d/
+      - ./images/mysql/dumps/:/docker-entrypoint-initdb.d/
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ppassword" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  memcached:
+    image: dj_memcached
+    container_name: dj_memcached
+    hostname: dj_memcached
+    build:
+      context: './images'
+      dockerfile: 'memcached/Dockerfile'
+    ports:
+      - "11211:11211"
+
+  rabbitmq:
+    image: dj_rabbitmq
+    container_name: dj_rabbitmq
+    hostname: dj_rabbitmq
+    build:
+      context: './images'
+      dockerfile: 'rabbitmq/Dockerfile'
+    ports:
+      - "5672:5672"   # AMQP connection port
+      - "15672:15672" # Admin port
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - ./images/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+      - ./images/rabbitmq/rabbitmq_delayed_message_exchange-3.12.0.ez:/opt/rabbitmq/plugins/rabbitmq_delayed_message_exchange-0.0.1.ez
+
+  redis:
+    image: dj_redis
+    container_name: dj_redis
+    hostname: dj_redis
+    build:
+      context: './images'
+      dockerfile: 'redis/Dockerfile'
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: dj_postgres
+    container_name: dj_postgres
+    hostname: dj_postgres
+    build:
+      context: './images'
+      dockerfile: 'postgres/Dockerfile'
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      # One mount at /var/lib/postgresql, not at its data subdirectory: from 18
+      # the image keeps each major in its own directory underneath and refuses
+      # to start if it finds a mount at the old path.
+      - postgres_data:/var/lib/postgresql
+      # The dumps are not what initdb runs — the restore script is, and it
+      # reads them from /dumps. See images/postgres/init/10-restore-dumps.sh.
+      - ./images/postgres/init/:/docker-entrypoint-initdb.d/
+      - ./images/postgres/dumps/:/dumps/
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "app", "-U", "app"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  phpmyadmin:
+    image: dj_phpmyadmin
+    container_name: dj_phpmyadmin
+    hostname: dj_phpmyadmin
+    build:
+      context: './images'
+      dockerfile: 'phpmyadmin/Dockerfile'
+    environment:
+      PMA_HOST: dj_mysql
+      PMA_USER: root
+      PMA_PASSWORD: password
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+
+  pgadmin:
+    image: dj_pgadmin
+    container_name: dj_pgadmin
+    hostname: dj_pgadmin
+    build:
+      context: './images'
+      dockerfile: 'pgadmin/Dockerfile'
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  mysql_data: {}
+  postgres_data: {}

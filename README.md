@@ -1,0 +1,299 @@
+# Workspace Docker Environment
+
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![PHP](https://img.shields.io/badge/PHP-8.5--FPM-777BB4?logo=php&logoColor=white)](https://php.net)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://mysql.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![Redis](https://img.shields.io/badge/Redis-latest-DC382D?logo=redis&logoColor=white)](https://redis.io)
+[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-3--mgmt-FF6600?logo=rabbitmq&logoColor=white)](https://rabbitmq.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+Unified Docker development environment that automatically serves **any project** in the workspace — no per-project configuration needed.
+
+Clone any project into your workspace folder and it's instantly accessible via `http://<folder>.<repo-name>.test:81`. Powered by wildcard nginx + dnsmasq.
+
+### Key Features
+
+- **Zero configuration** — clone a project and it's served instantly, no vhosts or hosts file edits
+- **Wildcard DNS + nginx** — dnsmasq resolves `*.test`, nginx routes by subdomain to the right folder
+- **Git worktree support** — each worktree gets its own URL automatically
+- **Full PHP stack** — 30+ extensions, Composer, Deployer, Xdebug pre-installed
+- **Automatic database backups** — MySQL and PostgreSQL are backed up on `docker-down`
+- **Database sync** — pull production/staging databases via SSH with one command
+- **Multi-platform DNS** — setup scripts for macOS, Linux and Windows
+
+## Services
+
+| Service    | Container      | Port          | Image              |
+|------------|----------------|---------------|---------------------|
+| Nginx      | dj_nginx       | 81 → 80      | nginx:latest        |
+| PHP        | dj_php         | (internal)    | php:8.5-fpm         |
+| MySQL      | dj_mysql       | 3307 → 3306  | mysql:8.0           |
+| PostgreSQL | dj_postgres    | 5432          | postgres:18-alpine  |
+| Redis      | dj_redis       | 6379          | redis:latest        |
+| Memcached  | dj_memcached   | 11211         | memcached:latest    |
+| RabbitMQ   | dj_rabbitmq    | 5672 / 15672  | rabbitmq:3-mgmt     |
+| phpMyAdmin | dj_phpmyadmin  | 8080 → 80    | phpmyadmin:latest   |
+| pgAdmin    | dj_pgadmin     | 5050          | dpage/pgadmin4      |
+
+## Requirements
+
+- [Docker Desktop](https://docker.com/products/docker-desktop/) (or Docker Engine on Linux)
+- DNS wildcard resolution for `*.test` (see [DNS Setup](#dns-setup) below)
+
+## Quick Start
+
+```bash
+# 1. Clone into your workspace
+cd ~/Workspace
+git clone https://github.com/jupaygon/docker.git
+
+# 2. Configure DNS (one-time, see DNS Setup section)
+./docker/scripts/setup-dnsmasq.sh   # macOS
+
+# 3. Start services
+cd docker
+cp .env.dist .env
+docker compose up -d --build
+```
+
+## DNS Setup
+
+All `*.test` domains must resolve to `127.0.0.1`. Choose your platform:
+
+### macOS (Homebrew + dnsmasq)
+
+```bash
+./scripts/setup-dnsmasq.sh
+```
+
+This installs dnsmasq via Homebrew, adds `address=/test/127.0.0.1`, and creates `/etc/resolver/test`.
+
+### Linux (dnsmasq)
+
+```bash
+# Install dnsmasq
+sudo apt install dnsmasq        # Debian/Ubuntu
+sudo dnf install dnsmasq        # Fedora/RHEL
+
+# Configure wildcard
+echo "address=/test/127.0.0.1" | sudo tee /etc/dnsmasq.d/test.conf
+
+# If systemd-resolved is running (Ubuntu 18+), configure it to delegate .test:
+sudo mkdir -p /etc/systemd/resolved.conf.d
+echo -e "[Resolve]\nDNS=127.0.0.1\nDomains=~test" | sudo tee /etc/systemd/resolved.conf.d/test.conf
+sudo systemctl restart systemd-resolved
+
+# Restart dnsmasq
+sudo systemctl restart dnsmasq
+```
+
+### Windows (Acrylic DNS Proxy)
+
+dnsmasq is not available on Windows. Use [Acrylic DNS Proxy](https://mayakron.altervista.org/support/acrylic/Home.htm) instead:
+
+1. Install Acrylic DNS Proxy
+2. Edit `AcrylicHosts.txt`, add: `127.0.0.1 *.test`
+3. Set your network adapter DNS to `127.0.0.1`
+
+Alternatively, use **WSL2** and follow the Linux setup inside your WSL distribution.
+
+## How It Works
+
+### Wildcard Nginx + dnsmasq
+
+1. **dnsmasq** resolves all `*.test` domains to `127.0.0.1`
+2. **Nginx** captures the first subdomain segment as the folder name:
+   ```
+   server_name ~^(?<folder>[^.]+)\.;
+   root /var/www/html/$folder/public;
+   ```
+3. The entire workspace is mounted as a single volume
+
+### URL Format
+
+```
+http://<folder>.<repo-name>.test:81
+```
+
+Only the **first segment** (`<folder>`) determines which folder is served. The second segment (`<repo-name>`) is for DNS routing.
+
+### Main checkout (master)
+
+For a regular clone, `<folder>` and `<repo-name>` are the same:
+
+```bash
+cd ~/Workspace
+git clone https://github.com/org/my-project.git
+# → http://my-project.my-project.test:81
+```
+
+### Worktrees (parallel branches)
+
+If you use [git worktrees](https://git-scm.com/docs/git-worktree) to work on multiple branches simultaneously, each worktree gets its own folder — and its own URL:
+
+```bash
+cd ~/Workspace/my-project
+git worktree add ../wt-my-project-fix-login feature/fix-login
+# → http://wt-my-project-fix-login.my-project.test:81
+```
+
+No nginx config, no hosts file, no restart. It just works.
+
+## PHP Extensions
+
+The PHP container includes everything you'd need for a modern Symfony/Laravel stack:
+
+`redis` · `amqp` · `imagick` · `zip` · `xml` · `mbstring` · `bcmath` · `soap` · `intl` · `gd` · `xsl` · `opcache` · `pdo_mysql` · `pdo_pgsql` · `memcached` · `xdebug`
+
+Plus Composer and Deployer pre-installed.
+
+## Shell Aliases
+
+Add to your `.zshrc`:
+
+```bash
+export DJ_HOME="$HOME/Workspace"
+
+# Login into containers
+alias dj-docker-php="docker exec -ti dj_php bash"
+alias dj-docker-mysql="docker exec -ti dj_mysql bash"
+alias dj-docker-nginx="docker exec -ti dj_nginx bash"
+alias dj-docker-redis="docker exec -ti dj_redis redis-cli"
+
+# Docker compose shortcut
+alias dj-docker="docker compose -f $DJ_HOME/docker/docker-compose.yml"
+
+# Start / stop
+alias dj-docker-up="$DJ_HOME/docker/scripts/docker-up.sh"
+alias dj-docker-build="dj-docker up --build -d"
+alias dj-docker-down="$DJ_HOME/docker/scripts/docker-down.sh"
+
+# Service UIs
+alias dj-docker-rabbit="open http://localhost:15672"
+alias dj-docker-pma="open http://localhost:8080"
+
+# Monitoring
+alias dj-docker-ps="docker ps | grep dj_"
+alias dj-docker-images="docker images | grep dj_"
+```
+
+| Command            | Description                           |
+|--------------------|---------------------------------------|
+| `dj-docker-php`    | Shell into PHP container              |
+| `dj-docker-mysql`  | Shell into MySQL container            |
+| `dj-docker-redis`  | Redis CLI                             |
+| `dj-docker`        | Docker compose shortcut               |
+| `dj-docker-up`     | Start containers                      |
+| `dj-docker-down`   | Stop containers (backs up databases)  |
+| `dj-docker-build`  | Rebuild and start containers          |
+| `dj-docker-rabbit` | Open RabbitMQ Management UI           |
+| `dj-docker-pma`    | Open phpMyAdmin                       |
+
+## Scripts
+
+| Script                        | Description                                        |
+|-------------------------------|----------------------------------------------------|
+| `scripts/setup-dnsmasq.sh`    | One-time DNS setup (installs and configures dnsmasq)|
+| `scripts/docker-up.sh`        | Start containers, plus any project worker found    |
+| `scripts/docker-down.sh`      | Stop containers with automatic database backup     |
+| `scripts/db-sync.sh`          | Interactive database sync from remote servers      |
+| `scripts/bucket-sync.sh`      | Copy objects between two S3-compatible buckets      |
+
+### Copying objects between buckets
+
+`db-sync.sh` brings a database here; `bucket-sync.sh` is its counterpart for the
+files an application keeps in object storage, and it does **not** bring them here.
+rclone runs on the destination box and pulls from the source bucket, so tens of
+gigabytes never cross this connection and never touch this disk.
+
+```bash
+bash scripts/bucket-sync.sh
+```
+
+It asks where from, where to, which prefix, and whether to `check` (count objects
+and bytes on both sides) or `copy`. Sites come from `BUCKET_SYNC_SITES` in `.env`,
+one entry per `name:server:endpoint:bucket:region`.
+
+- Nothing is ever deleted: `rclone copy`, never `sync`.
+- Interrupting it is safe — run it again and it resumes.
+- The source keys come from `.env` (or are typed in when missing). They reach the
+  box in an rclone config written with `umask 077` and deleted on exit, so they
+  never show up in the remote process list.
+- The destination's own keys are read on the box itself, from the file named by
+  `BUCKET_SYNC_BOX_ENV`. A box running on an instance profile has none, and rclone
+  uses the role instead.
+
+Source and destination prefixes are asked for separately, so prod's objects can be
+copied under staging's prefix the same way a prod dump gets loaded into staging.
+Two passes is the usual shape: one with the site running, one with it stopped to
+pick up whatever came in meanwhile.
+
+## Local overrides
+
+Anything specific to one machine stays out of the repo:
+
+- `docker-compose.override.yml` — extra services, ports, `extra_hosts`, mounts.
+  Gitignored, and `docker-up.sh` / `docker-down.sh` pick it up when present.
+- `images/nginx/conf.d/NN-local-*.conf` — extra vhosts. Gitignored. nginx tries
+  regex `server_name`s in include order and includes are alphabetical, so pick an
+  `NN` below `99`, which is where the catch-all lives.
+
+### WordPress projects
+
+WordPress serves from the project root, not from `public/`, so it gets its own
+vhost at `00-wordpress.conf`. Reach a project through it with `wp` as the second
+segment: `http://<folder>.wp.test:81`.
+
+## Troubleshooting
+
+### DNS not resolving *.test
+
+```bash
+# Verify dnsmasq
+brew services list | grep dnsmasq
+
+# Test resolution
+dig test-project.test @127.0.0.1
+
+# Re-run setup
+./scripts/setup-dnsmasq.sh
+```
+
+### Site returns 404
+
+- Ensure the project has a `public/` directory with an `index.php` or `index.html`
+- Check the folder name matches the first subdomain segment exactly
+
+### MySQL connection from PHP
+
+```
+Host: dj_mysql
+Port: 3306
+User: root | dev
+Password: password
+```
+
+### PostgreSQL connection from PHP
+
+```
+Host: dj_postgres
+Port: 5432
+User: app
+Password: password
+Database: app
+```
+
+### Database Management UIs
+
+| Tool       | URL                          |
+|------------|------------------------------|
+| phpMyAdmin | http://localhost:8080         |
+| pgAdmin    | http://localhost:5050         |
+| RabbitMQ   | http://localhost:15672        |
+
+pgAdmin default credentials: `admin@admin.com` / `admin`.
+
+## License
+
+MIT

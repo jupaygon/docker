@@ -1,0 +1,17 @@
+[mysqld]
+# Force TCP networking
+skip_networking = 0
+port            = 3306
+bind_address    = 0.0.0.0
+local_infile    = 1
+
+character-set-server = utf8mb4
+collation-server     = utf8mb4_0900_ai_ci
+
+# TLS off in development. In a .cnf the option is spelled with an
+# underscore, not the hyphen the command line uses.
+tls_version = ''
+require_secure_transport = OFF
+
+# Disable MySQL X — it is unused here and warns about SSL on every boot.
+mysqlx = OFF
