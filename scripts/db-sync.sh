@@ -200,17 +200,22 @@ import_dumps_mysql() {
   echo ""
   echo "Importing dumps into container $MYSQL_CONTAINER ..."
 
-  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql 2>/dev/null | sort)
+  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql "$DUMPS_DIR"/${SELECTED_DB}_*.sql.gz 2>/dev/null | sort)
 
   if [ -z "$local_files" ]; then
-    echo "ERROR: No .sql files found in $DUMPS_DIR for database $SELECTED_DB"
+    echo "ERROR: No dump files found in $DUMPS_DIR for database $SELECTED_DB"
     exit 1
   fi
 
   while IFS= read -r sql_file; do
     filename=$(basename "$sql_file")
     echo "  Importing $filename ..."
-    if ! docker exec -i "$MYSQL_CONTAINER" mysql -uroot -p"$MYSQL_ROOT_PASSWORD" < "$sql_file"; then
+    # The data dump arrives gzipped; the schema one does not.
+    case "$sql_file" in
+      *.gz) reader="gzip -dc" ;;
+      *)    reader="cat" ;;
+    esac
+    if ! $reader "$sql_file" | docker exec -i "$MYSQL_CONTAINER" mysql -uroot -p"$MYSQL_ROOT_PASSWORD"; then
       echo "ERROR: Failed to import $filename"
       exit 1
     fi
