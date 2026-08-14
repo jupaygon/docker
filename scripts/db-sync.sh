@@ -162,13 +162,13 @@ resolve_dumps_dir() {
 
 download_dumps() {
   echo ""
-  echo "Listing remote .sql files in $SELECTED_SERVER:$SELECTED_DB_PATH ..."
+  echo "Listing remote dump files in $SELECTED_SERVER:$SELECTED_DB_PATH ..."
 
-  # Get list of .sql files from remote server
-  remote_files=$(ssh "$SELECTED_SERVER" "ls -1 ${SELECTED_DB_PATH}/*.sql 2>/dev/null" | sort)
+  # The data dump is gzipped at the source; the schema one is not.
+  remote_files=$(ssh "$SELECTED_SERVER" "ls -1 ${SELECTED_DB_PATH}/*.sql ${SELECTED_DB_PATH}/*.sql.gz 2>/dev/null" | sort)
 
   if [ -z "$remote_files" ]; then
-    echo "ERROR: No .sql files found at $SELECTED_SERVER:$SELECTED_DB_PATH"
+    echo "ERROR: No dump files found at $SELECTED_SERVER:$SELECTED_DB_PATH"
     exit 1
   fi
 
@@ -180,7 +180,7 @@ download_dumps() {
   # Clean previous dumps for this database in local dir
   echo ""
   echo "Cleaning previous dumps in $DUMPS_DIR ..."
-  rm -f "$DUMPS_DIR"/${SELECTED_DB}_*.sql
+  rm -f "$DUMPS_DIR"/${SELECTED_DB}_*.sql "$DUMPS_DIR"/${SELECTED_DB}_*.sql.gz
 
   # Download each file
   echo "Downloading dumps to $DUMPS_DIR ..."
@@ -225,10 +225,10 @@ import_dumps_postgres() {
   echo ""
   echo "Importing dumps into container $POSTGRES_CONTAINER ..."
 
-  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql 2>/dev/null | sort)
+  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql "$DUMPS_DIR"/${SELECTED_DB}_*.sql.gz 2>/dev/null | sort)
 
   if [ -z "$local_files" ]; then
-    echo "ERROR: No .sql files found in $DUMPS_DIR for database $SELECTED_DB"
+    echo "ERROR: No dump files found in $DUMPS_DIR for database $SELECTED_DB"
     exit 1
   fi
 
@@ -256,9 +256,14 @@ import_dumps_postgres() {
   while IFS= read -r sql_file; do
     filename=$(basename "$sql_file")
     echo "  Importing $filename ..."
+    # The data dump arrives gzipped; the schema one does not.
+    case "$sql_file" in
+      *.gz) reader="gzip -dc" ;;
+      *)    reader="cat" ;;
+    esac
     if ! {
       printf "SET session_replication_role = 'replica';\n"
-      cat "$sql_file"
+      $reader "$sql_file"
       printf "\nSET session_replication_role = 'origin';\n"
     } | docker exec -i "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$SELECTED_DB" -v ON_ERROR_STOP=1; then
       echo "ERROR: Failed to import $filename"
