@@ -184,6 +184,16 @@ download_dumps() {
     remote_files=$(echo "$remote_files" | grep -v "/${SELECTED_DB}_slim_" || true)
   fi
 
+  # Asking for --full where only the slim pair is published leaves nothing to
+  # download, and saying so here beats failing later on an empty import.
+  if [ -z "$remote_files" ]; then
+    echo "ERROR: No matching dump files at $SELECTED_SERVER:$SELECTED_DB_PATH"
+    if [ "$WANT_FULL" = true ]; then
+      echo "       Only a slim dump is published for $SELECTED_DB; drop --full to take it."
+    fi
+    exit 1
+  fi
+
   echo "Found:"
   while IFS= read -r f; do
     echo "  - $(basename "$f")"
