@@ -172,6 +172,18 @@ download_dumps() {
     exit 1
   fi
 
+  # A project that publishes a slim pair alongside the full one means it: the
+  # slim leaves out bulk that can be fetched from its own source, and taking
+  # the full one instead is hours of restoring for the same working database.
+  slim_files=$(echo "$remote_files" | grep "/${SELECTED_DB}_slim_" || true)
+
+  if [ -n "$slim_files" ] && [ "$WANT_FULL" != true ]; then
+    echo "  (a slim dump is published; taking it — pass --full for the complete one)"
+    remote_files="$slim_files"
+  else
+    remote_files=$(echo "$remote_files" | grep -v "/${SELECTED_DB}_slim_" || true)
+  fi
+
   echo "Found:"
   while IFS= read -r f; do
     echo "  - $(basename "$f")"
@@ -295,6 +307,23 @@ import_dumps() {
 # =============================================================================
 # Main
 # =============================================================================
+
+WANT_FULL=false
+for arg in "$@"; do
+  case "$arg" in
+    --full) WANT_FULL=true ;;
+    -h|--help)
+      echo "Usage: db-sync.sh [--full]"
+      echo ""
+      echo "  --full   Take the complete dump even when a slim one is published."
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown option '$arg' (try --help)"
+      exit 1
+      ;;
+  esac
+done
 
 echo ""
 echo "=== DB Sync ==="
