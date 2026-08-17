@@ -26,7 +26,6 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     telnet \
     default-mysql-client \
-    postgresql-client \
     openssh-client \
     entr \
     age \
@@ -36,6 +35,19 @@ RUN apt-get update && apt-get install -y \
     # opcache is not in this list: the official image already ships it built in,
     # and on 8.5 installing it again produces no module and kills the build.
     && docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pdo_sqlite zip xml mbstring bcmath soap intl gd xsl pcntl snmp \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# pg_dump refuses to read a server newer than itself, and dj_postgres runs 18
+# while trixie ships 17: with the distribution client this container cannot dump
+# its own database. A client ahead of the server is fine, so this pins 18.
+# The key is stored ASCII-armoured and referenced with signed-by, so no gnupg.
+RUN install -d /etc/apt/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /etc/apt/keyrings/pgdg.asc \
+    && echo "deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-18 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
