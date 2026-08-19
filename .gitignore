@@ -1,7 +1,11 @@
 .env
 docker-compose.override.yml
+# Dumps carry real data and this repository is public. Both extensions: they
+# arrive compressed now, and only the plain one was listed here.
 images/mysql/dumps/*.sql
+images/mysql/dumps/*.sql.gz
 images/postgres/dumps/*.sql
+images/postgres/dumps/*.sql.gz
 images/nginx/conf.d/[0-9][0-9]-local-*.conf
 .claude/
 .idea/

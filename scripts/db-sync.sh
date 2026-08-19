@@ -160,11 +160,27 @@ resolve_dumps_dir() {
   mkdir -p "$DUMPS_DIR"
 }
 
+# Keeps one file per dump, the compressed one wherever both are published. A
+# project that has just started compressing leaves the plain file behind for a
+# while, and loading the pair means loading the same dump twice — for the schema,
+# that is a DROP TABLE in the middle of the data it just wrote.
+#
+# Reads paths on stdin, writes the kept ones on stdout. awk and not an
+# associative array: this also runs on the bash that ships with macOS.
+prefer_compressed() {
+  awk '
+    { base = $0; sub(/\.gz$/, "", base)
+      if (!(base in best) || $0 ~ /\.gz$/) { best[base] = $0 } }
+    END { for (b in best) { print best[b] } }
+  ' | sort
+}
+
 download_dumps() {
   echo ""
   echo "Listing remote dump files in $SELECTED_SERVER:$SELECTED_DB_PATH ..."
 
-  # The data dump is gzipped at the source; the schema one is not.
+  # Both extensions: dumps are compressed at the source now, and older ones are
+  # not. Which of the two to take, when a dump has both, is decided below.
   remote_files=$(ssh "$SELECTED_SERVER" "ls -1 ${SELECTED_DB_PATH}/*.sql ${SELECTED_DB_PATH}/*.sql.gz 2>/dev/null" | sort)
 
   if [ -z "$remote_files" ]; then
@@ -183,6 +199,8 @@ download_dumps() {
   else
     remote_files=$(echo "$remote_files" | grep -v "/${SELECTED_DB}_slim_" || true)
   fi
+
+  remote_files=$(printf '%s\n' "$remote_files" | prefer_compressed)
 
   # Asking for --full where only the slim pair is published leaves nothing to
   # download, and saying so here beats failing later on an empty import.
@@ -222,7 +240,7 @@ import_dumps_mysql() {
   echo ""
   echo "Importing dumps into container $MYSQL_CONTAINER ..."
 
-  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql "$DUMPS_DIR"/${SELECTED_DB}_*.sql.gz 2>/dev/null | sort)
+  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql "$DUMPS_DIR"/${SELECTED_DB}_*.sql.gz 2>/dev/null | prefer_compressed)
 
   if [ -z "$local_files" ]; then
     echo "ERROR: No dump files found in $DUMPS_DIR for database $SELECTED_DB"
@@ -232,7 +250,7 @@ import_dumps_mysql() {
   while IFS= read -r sql_file; do
     filename=$(basename "$sql_file")
     echo "  Importing $filename ..."
-    # The data dump arrives gzipped; the schema one does not.
+    # Compressed or not, depending on how old the dump is.
     case "$sql_file" in
       *.gz) reader="gzip -dc" ;;
       *)    reader="cat" ;;
@@ -252,7 +270,7 @@ import_dumps_postgres() {
   echo ""
   echo "Importing dumps into container $POSTGRES_CONTAINER ..."
 
-  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql "$DUMPS_DIR"/${SELECTED_DB}_*.sql.gz 2>/dev/null | sort)
+  local_files=$(ls -1 "$DUMPS_DIR"/${SELECTED_DB}_*.sql "$DUMPS_DIR"/${SELECTED_DB}_*.sql.gz 2>/dev/null | prefer_compressed)
 
   if [ -z "$local_files" ]; then
     echo "ERROR: No dump files found in $DUMPS_DIR for database $SELECTED_DB"
@@ -283,7 +301,7 @@ import_dumps_postgres() {
   while IFS= read -r sql_file; do
     filename=$(basename "$sql_file")
     echo "  Importing $filename ..."
-    # The data dump arrives gzipped; the schema one does not.
+    # Compressed or not, depending on how old the dump is.
     case "$sql_file" in
       *.gz) reader="gzip -dc" ;;
       *)    reader="cat" ;;
