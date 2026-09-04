@@ -288,6 +288,7 @@ download_dumps() {
 
   # Download each file
   echo "Downloading dumps to $DUMPS_DIR ..."
+  downloaded=0
   while IFS= read -r remote_file; do
     local_file="$DUMPS_DIR/$(basename "$remote_file")"
     echo "  $SELECTED_SERVER:$remote_file -> $local_file"
@@ -306,12 +307,13 @@ download_dumps() {
       echo "ERROR: Failed to download $remote_file"
       exit 1
     fi
+
+    downloaded=$((downloaded + 1))
   done <<< "$remote_files"
 
   # A partial download imports a schema with no rows and still reports success,
   # which is worse than failing: the database looks restored and is empty.
   expected=$(printf '%s\n' "$remote_files" | grep -c .)
-  downloaded=$(find "$DUMPS_DIR" -maxdepth 1 -newermt '-1 hour' \( -name "${SELECTED_DB}_*.sql" -o -name "${SELECTED_DB}_*.sql.gz" \) | wc -l | tr -d ' ')
 
   if [ "$downloaded" -ne "$expected" ]; then
     echo "ERROR: $expected dumps were listed but $downloaded arrived; refusing to import a partial set"
