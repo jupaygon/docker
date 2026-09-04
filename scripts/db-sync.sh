@@ -181,7 +181,11 @@ prefer_compressed() {
 resolve_remote_path() {
   case "$1" in
     @*)
-      volume_name="${1#@}"
+      # @volume, or @volume/subdirectory when the dumps sit inside it.
+      spec="${1#@}"
+      volume_name="${spec%%/*}"
+      subpath=""
+      [ "$spec" != "$volume_name" ] && subpath="/${spec#*/}"
 
       # Whatever is in the config ends up inside a remote shell command, so it
       # is held to the character set Docker itself accepts for a volume name.
@@ -190,8 +194,15 @@ resolve_remote_path() {
         return 1
       fi
 
+      if [ -n "$subpath" ] && ! [[ "$subpath" =~ ^(/[a-zA-Z0-9][a-zA-Z0-9_.-]*)+$ ]]; then
+        echo "ERROR: '${subpath#/}' is not a valid path inside the volume" >&2
+        return 1
+      fi
+
       REMOTE_NEEDS_SUDO=true
-      ssh "$SELECTED_SERVER" "docker volume inspect '$volume_name' --format '{{.Mountpoint}}'" 2>/dev/null
+      mountpoint=$(ssh "$SELECTED_SERVER" "docker volume inspect '$volume_name' --format '{{.Mountpoint}}'" 2>/dev/null)
+
+      [ -n "$mountpoint" ] && printf '%s%s' "$mountpoint" "$subpath"
       ;;
     *)
       REMOTE_NEEDS_SUDO=false
@@ -200,9 +211,12 @@ resolve_remote_path() {
   esac
 }
 
+# Through `sudo sh -c` and not plain `sudo`: the unprivileged shell cannot read
+# root's directory, so it would expand a wildcard to nothing and hand the literal
+# pattern to a command that then reports it as missing.
 remote_run() {
   if [ "$REMOTE_NEEDS_SUDO" = true ]; then
-    ssh "$SELECTED_SERVER" "sudo $1"
+    ssh "$SELECTED_SERVER" "sudo sh -c $(printf '%q' "$1")"
   else
     ssh "$SELECTED_SERVER" "$1"
   fi
