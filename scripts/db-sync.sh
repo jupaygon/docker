@@ -181,8 +181,17 @@ prefer_compressed() {
 resolve_remote_path() {
   case "$1" in
     @*)
+      volume_name="${1#@}"
+
+      # Whatever is in the config ends up inside a remote shell command, so it
+      # is held to the character set Docker itself accepts for a volume name.
+      if ! [[ "$volume_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
+        echo "ERROR: '$volume_name' is not a valid Docker volume name" >&2
+        return 1
+      fi
+
       REMOTE_NEEDS_SUDO=true
-      ssh "$SELECTED_SERVER" "docker volume inspect ${1#@} --format '{{.Mountpoint}}'" 2>/dev/null
+      ssh "$SELECTED_SERVER" "docker volume inspect '$volume_name' --format '{{.Mountpoint}}'" 2>/dev/null
       ;;
     *)
       REMOTE_NEEDS_SUDO=false
@@ -214,7 +223,7 @@ download_dumps() {
 
   # Both extensions: dumps are compressed at the source now, and older ones are
   # not. Which of the two to take, when a dump has both, is decided below.
-  remote_files=$(remote_run "ls -1 ${REMOTE_DUMPS_PATH}/*.sql ${REMOTE_DUMPS_PATH}/*.sql.gz 2>/dev/null" | sort)
+  remote_files=$(remote_run "ls -1 '${REMOTE_DUMPS_PATH}'/*.sql '${REMOTE_DUMPS_PATH}'/*.sql.gz 2>/dev/null" | sort)
 
   if [ -z "$remote_files" ]; then
     echo "ERROR: No dump files found at $SELECTED_SERVER:$REMOTE_DUMPS_PATH"
