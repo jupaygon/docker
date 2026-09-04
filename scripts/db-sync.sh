@@ -181,7 +181,11 @@ prefer_compressed() {
 resolve_remote_path() {
   case "$1" in
     @*)
-      volume_name="${1#@}"
+      # @volume, or @volume/subdirectory when the dumps sit inside it.
+      spec="${1#@}"
+      volume_name="${spec%%/*}"
+      subpath=""
+      [ "$spec" != "$volume_name" ] && subpath="/${spec#*/}"
 
       # Whatever is in the config ends up inside a remote shell command, so it
       # is held to the character set Docker itself accepts for a volume name.
@@ -190,19 +194,36 @@ resolve_remote_path() {
         return 1
       fi
 
-      REMOTE_NEEDS_SUDO=true
-      ssh "$SELECTED_SERVER" "docker volume inspect '$volume_name' --format '{{.Mountpoint}}'" 2>/dev/null
+      if [ -n "$subpath" ] && ! [[ "$subpath" =~ ^(/[a-zA-Z0-9][a-zA-Z0-9_.-]*)+$ ]]; then
+        echo "ERROR: '${subpath#/}' is not a valid path inside the volume" >&2
+        return 1
+      fi
+
+      mountpoint=$(ssh "$SELECTED_SERVER" "docker volume inspect '$volume_name' --format '{{.Mountpoint}}'" 2>/dev/null)
+
+      [ -n "$mountpoint" ] && printf '%s%s' "$mountpoint" "$subpath"
       ;;
     *)
-      REMOTE_NEEDS_SUDO=false
       printf '%s' "$1"
       ;;
   esac
 }
 
+# Decided here and not inside resolve_remote_path: callers read that function
+# through $(...), which runs it in a subshell where an assignment dies.
+path_needs_sudo() {
+  case "$1" in
+    @*) printf 'true' ;;
+    *)  printf 'false' ;;
+  esac
+}
+
+# Through `sudo sh -c` and not plain `sudo`: the unprivileged shell cannot read
+# root's directory, so it would expand a wildcard to nothing and hand the literal
+# pattern to a command that then reports it as missing.
 remote_run() {
   if [ "$REMOTE_NEEDS_SUDO" = true ]; then
-    ssh "$SELECTED_SERVER" "sudo $1"
+    ssh "$SELECTED_SERVER" "sudo sh -c $(printf '%q' "$1")"
   else
     ssh "$SELECTED_SERVER" "$1"
   fi
@@ -211,6 +232,7 @@ remote_run() {
 download_dumps() {
   echo ""
 
+  REMOTE_NEEDS_SUDO=$(path_needs_sudo "$SELECTED_DB_PATH")
   REMOTE_DUMPS_PATH=$(resolve_remote_path "$SELECTED_DB_PATH")
 
   if [ -z "$REMOTE_DUMPS_PATH" ]; then
