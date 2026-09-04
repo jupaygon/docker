@@ -199,15 +199,22 @@ resolve_remote_path() {
         return 1
       fi
 
-      REMOTE_NEEDS_SUDO=true
       mountpoint=$(ssh "$SELECTED_SERVER" "docker volume inspect '$volume_name' --format '{{.Mountpoint}}'" 2>/dev/null)
 
       [ -n "$mountpoint" ] && printf '%s%s' "$mountpoint" "$subpath"
       ;;
     *)
-      REMOTE_NEEDS_SUDO=false
       printf '%s' "$1"
       ;;
+  esac
+}
+
+# Decided here and not inside resolve_remote_path: callers read that function
+# through $(...), which runs it in a subshell where an assignment dies.
+path_needs_sudo() {
+  case "$1" in
+    @*) printf 'true' ;;
+    *)  printf 'false' ;;
   esac
 }
 
@@ -225,6 +232,7 @@ remote_run() {
 download_dumps() {
   echo ""
 
+  REMOTE_NEEDS_SUDO=$(path_needs_sudo "$SELECTED_DB_PATH")
   REMOTE_DUMPS_PATH=$(resolve_remote_path "$SELECTED_DB_PATH")
 
   if [ -z "$REMOTE_DUMPS_PATH" ]; then
