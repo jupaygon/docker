@@ -295,7 +295,9 @@ download_dumps() {
     # scp cannot become root on the far side; the redirection creates the file
     # even when the pipe fails, so a failed one has to be removed here.
     if [ "$REMOTE_NEEDS_SUDO" = true ]; then
-      if ! ssh "$SELECTED_SERVER" "sudo cat '$remote_file'" > "$local_file"; then
+      # -n or ssh swallows the list this loop is reading from, and every dump
+      # after the first is silently skipped.
+      if ! ssh -n "$SELECTED_SERVER" "sudo cat '$remote_file'" > "$local_file"; then
         rm -f "$local_file"
         echo "ERROR: Failed to download $remote_file"
         exit 1
@@ -305,6 +307,16 @@ download_dumps() {
       exit 1
     fi
   done <<< "$remote_files"
+
+  # A partial download imports a schema with no rows and still reports success,
+  # which is worse than failing: the database looks restored and is empty.
+  expected=$(printf '%s\n' "$remote_files" | grep -c .)
+  downloaded=$(find "$DUMPS_DIR" -maxdepth 1 -newermt '-1 hour' \( -name "${SELECTED_DB}_*.sql" -o -name "${SELECTED_DB}_*.sql.gz" \) | wc -l | tr -d ' ')
+
+  if [ "$downloaded" -ne "$expected" ]; then
+    echo "ERROR: $expected dumps were listed but $downloaded arrived; refusing to import a partial set"
+    exit 1
+  fi
 
   echo "Download complete."
 }
