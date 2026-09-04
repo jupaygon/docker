@@ -175,16 +175,49 @@ prefer_compressed() {
   ' | sort
 }
 
+# A path written as @name is a Docker named volume, not a directory: the dumps
+# live under the daemon's volume area and its exact location is the daemon's to
+# decide, so it is asked rather than assumed. Root owns that area, hence sudo.
+resolve_remote_path() {
+  case "$1" in
+    @*)
+      REMOTE_NEEDS_SUDO=true
+      ssh "$SELECTED_SERVER" "docker volume inspect ${1#@} --format '{{.Mountpoint}}'" 2>/dev/null
+      ;;
+    *)
+      REMOTE_NEEDS_SUDO=false
+      printf '%s' "$1"
+      ;;
+  esac
+}
+
+remote_run() {
+  if [ "$REMOTE_NEEDS_SUDO" = true ]; then
+    ssh "$SELECTED_SERVER" "sudo $1"
+  else
+    ssh "$SELECTED_SERVER" "$1"
+  fi
+}
+
 download_dumps() {
   echo ""
-  echo "Listing remote dump files in $SELECTED_SERVER:$SELECTED_DB_PATH ..."
+
+  REMOTE_DUMPS_PATH=$(resolve_remote_path "$SELECTED_DB_PATH")
+
+  if [ -z "$REMOTE_DUMPS_PATH" ]; then
+    echo "ERROR: no Docker volume named ${SELECTED_DB_PATH#@} on $SELECTED_SERVER"
+    echo "       docker volume ls   there will show what is available"
+    exit 1
+  fi
+
+  echo "Listing remote dump files in $SELECTED_SERVER:$REMOTE_DUMPS_PATH ..."
 
   # Both extensions: dumps are compressed at the source now, and older ones are
   # not. Which of the two to take, when a dump has both, is decided below.
-  remote_files=$(ssh "$SELECTED_SERVER" "ls -1 ${SELECTED_DB_PATH}/*.sql ${SELECTED_DB_PATH}/*.sql.gz 2>/dev/null" | sort)
+  remote_files=$(remote_run "ls -1 ${REMOTE_DUMPS_PATH}/*.sql ${REMOTE_DUMPS_PATH}/*.sql.gz 2>/dev/null" | sort)
 
   if [ -z "$remote_files" ]; then
-    echo "ERROR: No dump files found at $SELECTED_SERVER:$SELECTED_DB_PATH"
+    echo "ERROR: No dump files found at $SELECTED_SERVER:$REMOTE_DUMPS_PATH"
     exit 1
   fi
 
@@ -205,7 +238,7 @@ download_dumps() {
   # Asking for --full where only the slim pair is published leaves nothing to
   # download, and saying so here beats failing later on an empty import.
   if [ -z "$remote_files" ]; then
-    echo "ERROR: No matching dump files at $SELECTED_SERVER:$SELECTED_DB_PATH"
+    echo "ERROR: No matching dump files at $SELECTED_SERVER:$REMOTE_DUMPS_PATH"
     if [ "$WANT_FULL" = true ]; then
       echo "       Only a slim dump is published for $SELECTED_DB; drop --full to take it."
     fi
@@ -226,8 +259,17 @@ download_dumps() {
   echo "Downloading dumps to $DUMPS_DIR ..."
   while IFS= read -r remote_file; do
     local_file="$DUMPS_DIR/$(basename "$remote_file")"
-    echo "  scp $SELECTED_SERVER:$remote_file -> $local_file"
-    if ! scp "$SELECTED_SERVER":"$remote_file" "$local_file"; then
+    echo "  $SELECTED_SERVER:$remote_file -> $local_file"
+
+    # scp cannot become root on the far side; the redirection creates the file
+    # even when the pipe fails, so a failed one has to be removed here.
+    if [ "$REMOTE_NEEDS_SUDO" = true ]; then
+      if ! ssh "$SELECTED_SERVER" "sudo cat '$remote_file'" > "$local_file"; then
+        rm -f "$local_file"
+        echo "ERROR: Failed to download $remote_file"
+        exit 1
+      fi
+    elif ! scp "$SELECTED_SERVER":"$remote_file" "$local_file"; then
       echo "ERROR: Failed to download $remote_file"
       exit 1
     fi
