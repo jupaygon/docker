@@ -55,7 +55,8 @@ services:
       - ./images/mysql/conf.d/:/etc/mysql/conf.d/
       - ./images/mysql/dumps/:/docker-entrypoint-initdb.d/
     healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ppassword" ]
+      # TLS is off here: over TCP, caching_sha2_password needs the server's key until its auth cache warms up.
+      test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ppassword", "--get-server-public-key" ]
       interval: 5s
       timeout: 3s
       retries: 30
