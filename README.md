@@ -199,6 +199,7 @@ alias dj-docker-images="docker images | grep dj_"
 | `scripts/docker-down.sh`      | Stop containers with automatic database backup     |
 | `scripts/db-sync.sh`          | Interactive database sync from remote servers      |
 | `scripts/bucket-sync.sh`      | Copy objects between two S3-compatible buckets      |
+| `scripts/check-mysql-config.sh` | Check the MySQL `conf.d` on a throwaway server: binary logging off |
 
 ### Copying objects between buckets
 

@@ -1,0 +1,3 @@
+[mysqld]
+# No replica or point-in-time recovery reads them here, and at ~2 GB a day they filled the Docker disk.
+disable_log_bin
