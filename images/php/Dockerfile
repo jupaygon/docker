@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-enable xdebug redis amqp imagick \
     # opcache is not in this list: the official image already ships it built in,
     # and on 8.5 installing it again produces no module and kills the build.
-    && docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pdo_sqlite zip xml mbstring bcmath soap intl gd xsl pcntl snmp \
+    && docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pdo_sqlite zip xml mbstring bcmath soap intl gd xsl pcntl snmp sockets \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
